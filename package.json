@@ -12,7 +12,7 @@
   },
   "type": "module",
   "bin": {
-    "figma-lens": "./bin/figma-lens.js"
+    "figma-lens": "bin/figma-lens.js"
   },
   "files": [
     "bin/",
