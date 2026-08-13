@@ -14,10 +14,10 @@ duplicating calls:
 3. If a native MCP call reports that its server/tool is unavailable, fall back
    once to the CLI. If the CLI is missing too, follow [Setup and authentication](references/authentication.md).
 
-Do not call `figma-use`, Figma Desktop, an unrelated Figma MCP, or a browser
-bridge. Do not inspect the Figma Lens repository, README, local project
-instructions, or unrelated cache folders. Trust the user's request, this skill,
-and artifacts returned by the active transport.
+Keep one transport for a retrieval workflow so node IDs, cache hits,
+screenshots, and follow-up commands stay consistent. Inspect only the evidence
+needed for the user's request; stop when the visual and structural evidence is
+sufficient.
 
 The semantic workflow is identical in both modes:
 

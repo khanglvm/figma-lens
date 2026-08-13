@@ -1,12 +1,11 @@
 # Agent instructions
 
 For read-only Figma node links, use this repository's `figma-lens` CLI or its
-native MCP tools. For a single exact implementation frame use `extract --intent`. For a wrapper, flow,
-board, collection, or multi-state component use a catalog `scout` first. For
+native MCP tools. For a single exact implementation frame use `extract --intent`.
+For a wrapper, flow, board, collection, or multi-state component use a catalog `scout` first. For
 non-implementation inspection use `inspect` once, open the screenshot with
 vision, and read the compact spec. Use `search` or `tree` with `--offline` for
-follow-up questions. Do not use Figma Desktop, a patched browser bridge, or an
-unrelated Figma MCP.
+follow-up questions.
 
 If the supplied node wraps several screens or components, run `scout` without
 an intent first and view only its overview screenshot. Read `overview.states`
