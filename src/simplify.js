@@ -75,18 +75,71 @@ function simplifyBounds(bounds, parentBounds) {
   return result;
 }
 
+function simplifyLetterSpacing(value) {
+  if (typeof value === "number") return round(value);
+  if (!value || typeof value !== "object") return value;
+  return compactObject({ value: round(value.value), unit: value.unit });
+}
+
+function simplifyTypeStyle(style = {}) {
+  return compactObject({
+    fontFamily: style.fontFamily,
+    fontPostScriptName: style.fontPostScriptName,
+    fontStyle: style.fontStyle,
+    fontWeight: style.fontWeight,
+    fontSize: round(style.fontSize),
+    lineHeightPx: round(style.lineHeightPx),
+    lineHeightPercent: round(style.lineHeightPercent),
+    lineHeightUnit: style.lineHeightUnit,
+    letterSpacing: simplifyLetterSpacing(style.letterSpacing),
+    fills: simplifyPaints(style.fills),
+    opentypeFlags: style.opentypeFlags,
+    semanticWeight: style.semanticWeight,
+    semanticItalic: style.semanticItalic,
+    isOverrideOverTextStyle: style.isOverrideOverTextStyle,
+  });
+}
+
+function mixedStyleRuns(node, baseStyle) {
+  const characters = node.characters ?? "";
+  const overrides = node.characterStyleOverrides;
+  const table = node.styleOverrideTable;
+  if (!characters || !Array.isArray(overrides) || !table || !Object.keys(table).length) return undefined;
+
+  const runs = [];
+  let start = 0;
+  let current = String(overrides[0] ?? 0);
+  const flush = (end) => {
+    if (current === "0") return;
+    const override = table[current] ?? table[Number(current)];
+    if (!override) return;
+    const text = characters.slice(start, end);
+    runs.push(compactObject({
+      start,
+      end,
+      text: text.slice(0, 120),
+      textTruncated: text.length > 120 ? true : undefined,
+      style: simplifyTypeStyle({ ...baseStyle, ...override }),
+    }));
+  };
+
+  for (let index = 1; index <= characters.length; index += 1) {
+    const next = index < characters.length ? String(overrides[index] ?? 0) : undefined;
+    if (next !== current) {
+      flush(index);
+      start = index;
+      current = next;
+    }
+  }
+  return runs.length ? runs : undefined;
+}
+
 function simplifyText(node) {
   if (node.type !== "TEXT") return undefined;
   const style = node.style ?? {};
   return compactObject({
     value: node.characters ?? "",
-    fontFamily: style.fontFamily,
-    fontStyle: style.fontPostScriptName ?? style.fontStyle,
-    fontWeight: style.fontWeight,
-    fontSize: round(style.fontSize),
-    lineHeightPx: round(style.lineHeightPx),
-    lineHeightPercent: round(style.lineHeightPercent),
-    letterSpacing: round(style.letterSpacing),
+    ...simplifyTypeStyle(style),
     horizontalAlign: style.textAlignHorizontal,
     verticalAlign: style.textAlignVertical,
     case: style.textCase,
@@ -95,9 +148,12 @@ function simplifyText(node) {
     paragraphSpacing: round(style.paragraphSpacing),
     paragraphIndent: round(style.paragraphIndent),
     listSpacing: round(style.listSpacing),
+    lineTypes: node.lineTypes,
+    lineIndentations: node.lineIndentations,
+    textTruncation: style.textTruncation,
+    maxLines: style.maxLines,
     hyperlink: node.hyperlink,
-    styleOverrides: node.styleOverrideTable,
-    characterStyleOverrides: node.characterStyleOverrides,
+    mixedStyleRuns: mixedStyleRuns(node, style),
   });
 }
 
@@ -276,6 +332,139 @@ export function visibleNodeStats(spec) {
   return { total, text, images, byType };
 }
 
+function typographyStyle(text, fills) {
+  if (!text) return undefined;
+  return compactObject({
+    fontFamily: text.fontFamily,
+    fontPostScriptName: text.fontPostScriptName,
+    fontStyle: text.fontStyle,
+    fontWeight: text.fontWeight,
+    fontSize: text.fontSize,
+    lineHeightPx: text.lineHeightPx,
+    lineHeightPercent: text.lineHeightPercent,
+    lineHeightUnit: text.lineHeightUnit,
+    letterSpacing: text.letterSpacing,
+    fills,
+    case: text.case,
+    decoration: text.decoration,
+    opentypeFlags: text.opentypeFlags,
+    semanticWeight: text.semanticWeight,
+    semanticItalic: text.semanticItalic,
+    mixedStyleRuns: text.mixedStyleRuns,
+  });
+}
+
+function typographySignature(style) {
+  const value = style ?? {};
+  return JSON.stringify({
+    fontFamily: value.fontFamily,
+    fontPostScriptName: value.fontPostScriptName,
+    fontStyle: value.fontStyle,
+    fontWeight: value.fontWeight,
+    fontSize: value.fontSize,
+    lineHeightPx: value.lineHeightPx,
+    lineHeightPercent: value.lineHeightPercent,
+    lineHeightUnit: value.lineHeightUnit,
+    letterSpacing: value.letterSpacing,
+    fills: value.fills,
+    case: value.case,
+    decoration: value.decoration,
+    opentypeFlags: value.opentypeFlags,
+    semanticWeight: value.semanticWeight,
+    semanticItalic: value.semanticItalic,
+  });
+}
+
+export function typographyCatalog(spec, { maxStyles = 64, maxFaces = 32 } = {}) {
+  const styles = new Map();
+  const faces = new Map();
+  let visibleTextNodes = 0;
+  let mixedStyleNodes = 0;
+
+  walkVisibleNodes(spec.nodes, (node) => {
+    if (!node.text?.value) return true;
+    visibleTextNodes += 1;
+    if (node.text.mixedStyleRuns?.length) mixedStyleNodes += 1;
+    const style = typographyStyle(node.text, node.fills);
+    const signature = typographySignature(style);
+    const { mixedStyleRuns: _mixedStyleRuns, ...baseStyle } = style;
+    const current = styles.get(signature) ?? {
+      ...baseStyle,
+      usageCount: 0,
+      examples: [],
+    };
+    current.usageCount += 1;
+    if (current.examples.length < 3) {
+      current.examples.push({
+        id: node.id,
+        text: node.text.value.replace(/\s+/g, " ").slice(0, 80),
+      });
+    }
+    styles.set(signature, current);
+
+    const allStyles = [style, ...(node.text.mixedStyleRuns ?? []).map((run) => run.style)];
+    for (const faceStyle of allStyles) {
+      if (!faceStyle?.fontFamily) continue;
+      const key = JSON.stringify([
+        faceStyle.fontFamily,
+        faceStyle.fontPostScriptName,
+        faceStyle.fontStyle,
+        faceStyle.fontWeight,
+      ]);
+      const face = faces.get(key) ?? compactObject({
+        family: faceStyle.fontFamily,
+        postScriptName: faceStyle.fontPostScriptName,
+        style: faceStyle.fontStyle,
+        weight: faceStyle.fontWeight,
+        usageCount: 0,
+      });
+      face.usageCount += 1;
+      faces.set(key, face);
+    }
+    return true;
+  });
+
+  return {
+    visibleTextNodes,
+    mixedStyleNodes,
+    fontFaces: [...faces.values()]
+      .sort((left, right) => right.usageCount - left.usageCount || String(left.family).localeCompare(String(right.family)))
+      .slice(0, maxFaces),
+    styles: [...styles.values()]
+      .sort((left, right) => right.usageCount - left.usageCount || Number(right.fontSize ?? 0) - Number(left.fontSize ?? 0))
+      .slice(0, maxStyles)
+      .map((style, index) => ({ id: `t${index + 1}`, ...style })),
+    availability: {
+      status: "not-verified",
+      note: "Figma REST reports requested font faces and metrics, not licensed font files or whether the destination app loads them. Verify each family/weight in the target project or obtain the font legally before visual comparison.",
+    },
+  };
+}
+
+export function compactTypography(spec, { maxStyles = 6, maxFaces = 6 } = {}) {
+  const catalog = typographyCatalog(spec, { maxStyles, maxFaces });
+  return {
+    visibleTextNodes: catalog.visibleTextNodes,
+    mixedStyleNodes: catalog.mixedStyleNodes,
+    fontFaces: catalog.fontFaces,
+    styles: catalog.styles.map((style) => ({
+      id: style.id,
+      fontFamily: style.fontFamily,
+      fontPostScriptName: style.fontPostScriptName,
+      fontStyle: style.fontStyle,
+      fontWeight: style.fontWeight,
+      fontSize: style.fontSize,
+      lineHeightPx: style.lineHeightPx,
+      lineHeightPercent: style.lineHeightPercent,
+      lineHeightUnit: style.lineHeightUnit,
+      letterSpacing: style.letterSpacing,
+      usageCount: style.usageCount,
+      example: style.examples?.[0]?.text,
+    })),
+    availability: catalog.availability,
+  };
+}
+
 export function searchSpec(spec, query, limit = 20) {
   const terms = String(query).toLocaleLowerCase().split(/\s+/).filter(Boolean);
   const matches = [];
@@ -406,6 +595,8 @@ export function visibleEvidence(spec, { screenshots = [] } = {}) {
     fidelityRule: "Copy and state may be implemented only when present in both this visible-layer evidence and the selected-state screenshot. Hidden subtrees are excluded. Never invent replacement labels, counts, data, controls, or interactions.",
     states: (spec.nodes ?? []).map((root, index) => {
       const visibleText = [];
+      const typography = typographyCatalog({ ...spec, nodes: [root] });
+      const typographyRefs = new Map(typography.styles.map((style) => [typographySignature(style), style.id]));
       let visibleNodes = 0;
       walkVisibleNodes([root], (node) => {
         visibleNodes += 1;
@@ -413,6 +604,8 @@ export function visibleEvidence(spec, { screenshots = [] } = {}) {
           visibleText.push({
             id: node.id,
             value: node.text.value,
+            typographyRef: typographyRefs.get(typographySignature(typographyStyle(node.text, node.fills))),
+            ...(node.text.mixedStyleRuns ? { mixedStyleRuns: node.text.mixedStyleRuns } : {}),
             at: node.bounds
               ? `${node.bounds.relativeX ?? node.bounds.x},${node.bounds.relativeY ?? node.bounds.y} ${node.bounds.width}x${node.bounds.height}`
               : undefined,
@@ -430,6 +623,7 @@ export function visibleEvidence(spec, { screenshots = [] } = {}) {
         screenshot: screenshots[index],
         visibleNodes,
         visibleTextCount: visibleText.length,
+        typography,
         ...hidden,
         coverage,
         visibleText,
@@ -491,6 +685,7 @@ export function implementationContract(spec) {
       root: compactStyleContract(root),
       primary,
       secondary,
+      typography: typographyCatalog({ ...spec, nodes: [root] }),
       textStyles,
     };
   });
@@ -498,6 +693,19 @@ export function implementationContract(spec) {
 
 export function summaryMarkdown(spec, artifacts = {}) {
   const stats = visibleNodeStats(spec);
+  const typography = typographyCatalog(spec);
   const roots = spec.nodes.map((node) => `\`${node.name}\` (${node.type}, ${node.id})`).join(", ");
-  return `# Figma inspection\n\n- File: ${spec.source.fileName ?? spec.source.fileKey}\n- Selected: ${roots || "file root"}\n- Version: ${spec.source.version ?? "unknown"}\n- Last modified: ${spec.source.lastModified ?? "unknown"}\n- Visible nodes: ${stats.total}\n- Visible text nodes: ${stats.text}\n- Visible image fills: ${stats.images}\n${artifacts.screenshots?.length ? `- Screenshots: ${artifacts.screenshots.map((path) => `\`${path}\``).join(", ")}\n` : ""}${artifacts.evidence ? `- Visible evidence: \`${artifacts.evidence}\`\n` : ""}\n> Fidelity lock: this tree omits hidden subtrees. Use visible evidence plus the selected-state screenshot; never substitute hidden variant copy or invent product data.\n\n## Visible layer tree\n\n${specTree(spec, { maxDepth: 6, maxNodes: 250, visibleOnly: true })}\n`;
+  const fontLines = typography.fontFaces.length
+    ? typography.fontFaces.map((face) => `- ${face.family}${face.postScriptName ? ` / ${face.postScriptName}` : ""}${face.style ? `, ${face.style}` : ""}${face.weight ? `, weight ${face.weight}` : ""} (${face.usageCount} use${face.usageCount === 1 ? "" : "s"})`).join("\n")
+    : "- No visible font face reported at this depth.";
+  const styleLines = typography.styles.slice(0, 12).map((style) => {
+    const lineHeight = style.lineHeightPx !== undefined
+      ? `${style.lineHeightPx}px`
+      : style.lineHeightPercent !== undefined ? `${style.lineHeightPercent}%` : "?";
+    const tracking = style.letterSpacing !== undefined
+      ? `, tracking ${typeof style.letterSpacing === "object" ? `${style.letterSpacing.value}${style.letterSpacing.unit ?? ""}` : `${style.letterSpacing}px`}`
+      : "";
+    return `- ${style.fontFamily ?? "unknown font"} ${style.fontWeight ?? ""} ${style.fontSize ?? "?"}px / ${lineHeight}${tracking} — ${style.examples?.[0]?.text ?? ""}`;
+  }).join("\n");
+  return `# Figma inspection\n\n- File: ${spec.source.fileName ?? spec.source.fileKey}\n- Selected: ${roots || "file root"}\n- Version: ${spec.source.version ?? "unknown"}\n- Last modified: ${spec.source.lastModified ?? "unknown"}\n- Visible nodes: ${stats.total}\n- Visible text nodes: ${stats.text}\n- Visible image fills: ${stats.images}\n${artifacts.screenshots?.length ? `- Screenshots: ${artifacts.screenshots.map((path) => `\`${path}\``).join(", ")}\n` : ""}${artifacts.evidence ? `- Visible evidence: \`${artifacts.evidence}\`\n` : ""}\n> Fidelity lock: this tree omits hidden subtrees. Use visible evidence plus the selected-state screenshot; never substitute hidden variant copy or invent product data.\n\n## Typography\n\n${fontLines}\n\n${styleLines || "- No visible text style reported at this depth."}\n\n> Font availability is not verified by Figma REST. Confirm each family and weight exists in the destination before visual comparison; do not silently substitute a fallback.\n\n## Visible layer tree\n\n${specTree(spec, { maxDepth: 6, maxNodes: 250, visibleOnly: true })}\n`;
 }

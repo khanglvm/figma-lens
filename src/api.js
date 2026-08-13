@@ -1,9 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { createWriteStream } from "node:fs";
-import { mkdir, rename, rm } from "node:fs/promises";
+import { mkdir, open, rename, rm } from "node:fs/promises";
 import { dirname } from "node:path";
-import { Readable } from "node:stream";
-import { pipeline } from "node:stream/promises";
 import { resolveTokenSync } from "./credentials.js";
 
 export class FigmaApiError extends Error {
@@ -52,6 +49,70 @@ function queryUrl(baseUrl, path, query = {}) {
     }
   }
   return url;
+}
+
+async function cancelBody(body) {
+  await body?.cancel().catch(() => {});
+}
+
+function responseSizeError({ resource, maxResponseBytes, observedBytes, status, rate }) {
+  const size = observedBytes === undefined ? `more than ${maxResponseBytes}` : observedBytes;
+  return new FigmaApiError(
+    `${resource} is ${size} bytes, above the ${maxResponseBytes} byte safety limit. Use a node link or --depth.`,
+    { status, rate },
+  );
+}
+
+async function readBoundedBytes(response, { maxResponseBytes, resource, rate }) {
+  const contentLength = Number(response.headers.get("content-length"));
+  if (Number.isFinite(contentLength) && contentLength > maxResponseBytes) {
+    await cancelBody(response.body);
+    throw responseSizeError({
+      resource,
+      maxResponseBytes,
+      observedBytes: contentLength,
+      status: response.status,
+      rate,
+    });
+  }
+
+  if (!response.body) return new Uint8Array();
+  const reader = response.body.getReader();
+  const chunks = [];
+  let totalBytes = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const nextTotal = totalBytes + value.byteLength;
+      if (nextTotal > maxResponseBytes) {
+        await reader.cancel().catch(() => {});
+        throw responseSizeError({
+          resource,
+          maxResponseBytes,
+          observedBytes: nextTotal,
+          status: response.status,
+          rate,
+        });
+      }
+      chunks.push(value);
+      totalBytes = nextTotal;
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  const result = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    result.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return result;
+}
+
+function decodeJson(bytes) {
+  return JSON.parse(new TextDecoder().decode(bytes));
 }
 
 export class FigmaApi {
@@ -120,15 +181,6 @@ export class FigmaApi {
 
       const rate = readRateHeaders(response.headers);
       this.calls.push({ path, status: response.status, attempt: attempt + 1, rate });
-      const contentLength = Number(response.headers.get("content-length"));
-      if (response.ok && Number.isFinite(contentLength) && contentLength > this.maxResponseBytes) {
-        await response.body?.cancel().catch(() => {});
-        throw new FigmaApiError(
-          `Figma response is ${contentLength} bytes, above the ${this.maxResponseBytes} byte safety limit. Use a node link or --depth.`,
-          { status: response.status, rate },
-        );
-      }
-
       const retryAfterMs = retryAfterMilliseconds(rate.retryAfter);
       const shortRateLimit = response.status === 429 && retryAfterMs !== undefined && retryAfterMs <= this.maxRetryAfterMs;
       if (!response.ok && attempt < this.maxRetries && (transientStatus(response.status) || shortRateLimit)) {
@@ -138,10 +190,20 @@ export class FigmaApi {
       }
 
       if (response.ok) {
-        return { data: await response.json(), rate };
+        const bytes = await readBoundedBytes(response, {
+          maxResponseBytes: this.maxResponseBytes,
+          resource: "Figma response",
+          rate,
+        });
+        return { data: decodeJson(bytes), rate };
       }
 
-      const text = await response.text();
+      const bytes = await readBoundedBytes(response, {
+        maxResponseBytes: this.maxResponseBytes,
+        resource: "Figma error response",
+        rate,
+      });
+      const text = new TextDecoder().decode(bytes);
       let body = text;
       try {
         body = text ? JSON.parse(text) : null;
@@ -202,7 +264,19 @@ export class FigmaApi {
         }
         throw new FigmaApiError(`Asset download network failure: ${error.message}`, { status: 0 });
       }
-      if (response.ok && response.body) break;
+      if (response.ok && response.body) {
+        const contentLength = Number(response.headers.get("content-length"));
+        if (Number.isFinite(contentLength) && contentLength > this.maxResponseBytes) {
+          await cancelBody(response.body);
+          throw responseSizeError({
+            resource: "Asset download",
+            maxResponseBytes: this.maxResponseBytes,
+            observedBytes: contentLength,
+            status: response.status,
+          });
+        }
+        break;
+      }
       if (attempt < this.maxRetries && transientStatus(response.status)) {
         await response.body?.cancel().catch(() => {});
         await this.sleepImpl(this.retryDelay(attempt, response.headers.get("retry-after")));
@@ -222,10 +296,39 @@ export class FigmaApi {
     const finalDestination = detectExtension && extension ? `${destination}${extension}` : destination;
     await mkdir(dirname(finalDestination), { recursive: true });
     const temporary = `${finalDestination}.${process.pid}.${randomUUID()}.tmp`;
+    let handle;
+    let reader;
+    let totalBytes = 0;
     try {
-      await pipeline(Readable.fromWeb(response.body), createWriteStream(temporary));
+      handle = await open(temporary, "wx");
+      reader = response.body.getReader();
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const nextTotal = totalBytes + value.byteLength;
+        if (nextTotal > this.maxResponseBytes) {
+          await reader.cancel().catch(() => {});
+          throw responseSizeError({
+            resource: "Asset download",
+            maxResponseBytes: this.maxResponseBytes,
+            observedBytes: nextTotal,
+            status: response.status,
+          });
+        }
+        await handle.write(value);
+        totalBytes = nextTotal;
+      }
+      reader.releaseLock();
+      reader = undefined;
+      await handle.close();
+      handle = undefined;
       await rename(temporary, finalDestination);
     } catch (error) {
+      if (reader) {
+        await reader.cancel().catch(() => {});
+        reader.releaseLock();
+      }
+      if (handle) await handle.close().catch(() => {});
       await rm(temporary, { force: true }).catch(() => {});
       throw error;
     }

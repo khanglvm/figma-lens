@@ -209,6 +209,14 @@ count of preferred swap values. Large `preferredValues` catalogs are omitted
 from `spec.json`; they are irrelevant to reproducing the selected state and can
 otherwise dominate extraction size.
 
+Focused and exact-node commands surface a compact `typography` catalog in their
+JSON output and write the full deduplicated catalog to `artifacts.typography`.
+It includes the requested font family, PostScript face/style, weight, size,
+line height, tracking, visible usage examples, and decoded mixed-style text
+runs. Figma REST does not distribute licensed font files or prove that the
+destination app loads a face, so verify project font imports before claiming
+pixel parity; never silently substitute a fallback.
+
 If vision reveals copy or a nested control that is absent from the default
 depth-6 spec, deepen only the focused node and search that cache:
 

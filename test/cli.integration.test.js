@@ -11,6 +11,16 @@ import { scoutRawFixture } from "../fixtures/scout.js";
 
 const execFileAsync = promisify(execFile);
 
+test("CLI version exactly matches package metadata", async () => {
+  const packageMetadata = JSON.parse(await readFile(resolve("package.json"), "utf8"));
+  const result = await execFileAsync(process.execPath, [resolve("bin/figma-lens.js"), "--version"], {
+    cwd: resolve("."),
+  });
+
+  assert.equal(result.stderr, "");
+  assert.equal(result.stdout, `figma-lens ${packageMetadata.version}\n`);
+});
+
 function findRawNode(node, id) {
   if (node.id === id) return node;
   for (const child of node.children ?? []) {

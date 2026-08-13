@@ -1,6 +1,26 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { FigmaApi, FigmaApiError } from "../src/api.js";
+
+function chunkedBody(chunks) {
+  let index = 0;
+  let cancelled = false;
+  return {
+    stream: new ReadableStream({
+      pull(controller) {
+        if (index < chunks.length) controller.enqueue(chunks[index++]);
+        else controller.close();
+      },
+      cancel() {
+        cancelled = true;
+      },
+    }, { highWaterMark: 0 }),
+    wasCancelled: () => cancelled,
+  };
+}
 
 test("keeps credentials in headers and captures rate-limit metadata", async () => {
   let request;
@@ -72,4 +92,72 @@ test("does not sleep through long Figma rate-limit windows", async () => {
   });
   await assert.rejects(() => api.me(), (error) => error.status === 429 && error.rate.retryAfter === "86400");
   assert.equal(calls, 1);
+});
+
+test("caps chunked JSON responses even when Content-Length lies", async () => {
+  const body = chunkedBody([new TextEncoder().encode('{"name":"'), new TextEncoder().encode("too-large".repeat(8)), new TextEncoder().encode('"}')]);
+  const api = new FigmaApi({
+    token: "token",
+    maxResponseBytes: 16,
+    fetchImpl: async () => new Response(body.stream, {
+      status: 200,
+      headers: { "content-type": "application/json", "content-length": "1" },
+    }),
+  });
+
+  await assert.rejects(() => api.me(), (error) => error instanceof FigmaApiError && error.status === 200 && /safety limit/.test(error.message));
+  assert.equal(body.wasCancelled(), true);
+});
+
+test("parses chunked JSON below the response limit", async () => {
+  const body = chunkedBody([new TextEncoder().encode('{"id":'), new TextEncoder().encode('"me"}')]);
+  const api = new FigmaApi({
+    token: "token",
+    maxResponseBytes: 32,
+    fetchImpl: async () => new Response(body.stream, { status: 200, headers: { "content-type": "application/json" } }),
+  });
+
+  assert.deepEqual((await api.me()).data, { id: "me" });
+  assert.equal(body.wasCancelled(), false);
+});
+
+test("caps chunked asset downloads before oversized bytes reach disk", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "figma-lens-api-"));
+  const destination = join(directory, "asset.png");
+  const body = chunkedBody([new Uint8Array([1, 2, 3]), new Uint8Array([4, 5, 6])]);
+  const api = new FigmaApi({
+    token: "token",
+    maxResponseBytes: 4,
+    fetchImpl: async () => new Response(body.stream, {
+      status: 200,
+      headers: { "content-type": "image/png", "content-length": "1" },
+    }),
+  });
+  try {
+    await assert.rejects(() => api.download("https://assets.example/asset", destination), (error) => error instanceof FigmaApiError && /safety limit/.test(error.message));
+    await assert.rejects(() => readFile(destination));
+    assert.deepEqual(await readdir(directory), []);
+    assert.equal(body.wasCancelled(), true);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("writes chunked asset downloads below the response limit", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "figma-lens-api-"));
+  const destination = join(directory, "asset.png");
+  const body = chunkedBody([new Uint8Array([1, 2]), new Uint8Array([3, 4])]);
+  const api = new FigmaApi({
+    token: "token",
+    maxResponseBytes: 4,
+    fetchImpl: async () => new Response(body.stream, { status: 200, headers: { "content-type": "image/png" } }),
+  });
+  try {
+    const result = await api.download("https://assets.example/asset", destination);
+    assert.equal(result.path, destination);
+    assert.deepEqual(await readFile(destination), Buffer.from([1, 2, 3, 4]));
+    assert.equal(body.wasCancelled(), false);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
 });

@@ -4,6 +4,7 @@ import { credentialPath, readStoredCredential, removeCredential, resolveTokenSyn
 import { checkImplementationCopy } from "./copy.js";
 import { parseFigmaRef, parseNodeIds } from "./ref.js";
 import { evidenceCoverage, searchSpec } from "./simplify.js";
+import { FIGMA_LENS_VERSION } from "./version.js";
 import {
   downloadAssets,
   detail,
@@ -258,7 +259,7 @@ export async function main(argv = process.argv.slice(2), dependencies = {}) {
     });
   }
   if (command === "version" || command === "--version" || command === "-v") {
-    process.stdout.write("figma-lens 0.2.0\n");
+    process.stdout.write(`figma-lens ${FIGMA_LENS_VERSION}\n`);
     return 0;
   }
 

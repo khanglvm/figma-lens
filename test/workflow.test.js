@@ -241,11 +241,15 @@ test("detail returns source geometry and one batched 2x child render", async () 
   assert.equal(result.details[0].renderSize, "1040×192 px at 2×");
   assert.equal(result.details[0].childCount, 2);
   assert.ok(result.details[0].geometry);
+  assert.equal(result.details[0].typography[0].fontFamily, "Inter");
+  assert.equal(result.details[0].typography[0].fontWeight, 600);
   assert.equal("children" in result.details[0], false);
   assert.equal(JSON.parse(await readFile(result.details[0].artifact, "utf8")).children.length, 2);
   assert.match(result.details[0].screenshot, /@2x\.png$/);
   const detailEvidence = JSON.parse(await readFile(result.artifacts.detailEvidence, "utf8"));
   assert.deepEqual(detailEvidence.states[0].visibleText.map((row) => row.value), ["Smart template"]);
+  assert.equal(detailEvidence.states[0].visibleText[0].typographyRef, "t1");
+  assert.equal(result.typography.fontFaces[0].family, "Inter");
   assert.match(result.overview.warning, /navigation-only/);
   assert.equal(api.calls.length, 2);
   assert.equal(result.details.some((candidate) => candidate.id === "10:34"), false);

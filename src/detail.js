@@ -38,6 +38,43 @@ function compactStyle(node) {
   };
 }
 
+function collectTypography(node, limit = 12) {
+  const styles = [];
+  const seen = new Set();
+  function visit(current) {
+    if (!isNodeVisible(current) || styles.length >= limit) return;
+    if (current.text?.value) {
+      const style = {
+        fontFamily: current.text.fontFamily,
+        fontPostScriptName: current.text.fontPostScriptName,
+        fontStyle: current.text.fontStyle,
+        fontWeight: current.text.fontWeight,
+        fontSize: current.text.fontSize,
+        lineHeightPx: current.text.lineHeightPx,
+        lineHeightPercent: current.text.lineHeightPercent,
+        lineHeightUnit: current.text.lineHeightUnit,
+        letterSpacing: current.text.letterSpacing,
+        fills: current.fills,
+        case: current.text.case,
+        decoration: current.text.decoration,
+        mixedStyleRuns: current.text.mixedStyleRuns,
+      };
+      const signature = JSON.stringify(style);
+      if (!seen.has(signature)) {
+        seen.add(signature);
+        styles.push({
+          nodeId: current.id,
+          example: current.text.value.replace(/\s+/g, " ").slice(0, 80),
+          ...style,
+        });
+      }
+    }
+    for (const child of current.children ?? []) visit(child);
+  }
+  visit(node);
+  return styles;
+}
+
 function compactChildren(node, maxDepth = 2, limit = 24) {
   const children = [];
   function visit(current, depth) {
@@ -143,6 +180,7 @@ export function detailCandidates(spec, intent = "", { limit = 12 } = {}) {
         },
         text: clippedText(node),
         style: compactStyle(node),
+        typography: collectTypography(node),
         children: compactChildren(node),
         score: scored.value,
         matched: scored.matched,

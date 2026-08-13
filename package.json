@@ -1,6 +1,6 @@
 {
   "name": "figma-lens",
-  "version": "0.2.0",
+  "version": "0.2.3",
   "description": "Token-efficient, headless Figma inspection for coding agents over CLI or MCP",
   "repository": {
     "type": "git",

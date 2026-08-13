@@ -1,6 +1,6 @@
 ---
 name: figma-lens
-description: Use for every prompt containing a figma.com/design or figma.com/file URL, including implementing pixel-accurate UI, explaining a design or user flow, finding a screen/component inside a large board, or inspecting visual/spec/asset details. Provides the headless read-only Figma Lens workflow through native figma_lens MCP tools when available or the figma-lens CLI otherwise, with personal-token access, compact visual-first output, source-size details, asset export, and caching. Does not require Figma Desktop.
+description: Use for every prompt containing a figma.com/design or figma.com/file URL, including implementing pixel-accurate UI, explaining a design or user flow, finding a screen/component inside a large board, or inspecting visual/spec/asset details. Provides the headless read-only Figma Lens workflow through native figma_lens MCP tools when available or the figma-lens CLI otherwise, with exact font/typography evidence, personal-token access, compact visual-first output, source-size details, asset export, and caching. Does not require Figma Desktop.
 ---
 
 # Figma Lens workflow
@@ -104,6 +104,36 @@ each detail's inline `geometry` and source `size`; read only an individual
 layout contract for padding, gaps, radius, strokes, colors, effects, typography,
 and child geometry. Never estimate from a scaled-down parent preview.
 
+### Resolve typography before CSS
+
+Treat `typography.fontFaces` and `typography.styles` returned by `focus`,
+`inspect`, or `detail` as required implementation evidence. Before measuring or
+writing text layout:
+
+1. Match each visible text row's `typographyRef` to its state's
+   `typography.styles[]` entry. For a source-size child, prefer its matching
+   `details[].typography[]` entry.
+2. Apply the exact `fontFamily`, `fontPostScriptName`/`fontStyle`, `fontWeight`,
+   `fontSize`, line height, and `letterSpacing`. Preserve text case, decoration,
+   and fill color when returned.
+3. Implement `mixedStyleRuns` as bounded spans with their returned styles; do
+   not flatten a mixed-weight or mixed-font label into one CSS rule.
+4. Inspect the destination project's font imports, local font files, CSS,
+   framework font loader, or design-system tokens. Confirm every required
+   family and weight is loaded before screenshot comparison. In a browser,
+   verify the computed font and use `document.fonts.check(...)` when available.
+
+`typography.availability.status` is `not-verified` by design: Figma REST reports
+the requested face and metrics but does not provide a licensed font file or
+prove the destination loads it. Never silently substitute a fallback or fetch
+an unlicensed font. Reuse an exact font already present, add a legitimately
+available project font, or tell the user that pixel parity is blocked by the
+missing face. Do not claim pixel-perfect output while a fallback is rendering.
+
+For large nodes, inline output is bounded. Read only `artifacts.typography` when
+the required visible style is absent from the inline catalog; it contains the
+deduplicated full focused-subtree catalog without raw node noise.
+
 Do not start implementation when a named visible control has no source-size
 detail or when `detail` returns a different group than the screenshot. Refine
 the comma-separated intent once. If it still cannot isolate the group, preserve
@@ -152,10 +182,11 @@ If `resolution.required` is true, do not guess or deeply inspect the wrapper.
 Run the copy-ready `resolution.next.scout`, view candidate 1, then use the
 matching `focus` command. View candidate 2 only if candidate 1 is wrong.
 
-After implementation, run the project's normal build/tests. Then capture the
-implementation at the baseline frame's width and height and compare it with the
-baseline screenshot using vision. This verification is required for visual
-work. Before calling the result complete, run the offline copy provenance gate
+After implementation, run the project's normal build/tests. Confirm the exact
+fonts have finished loading, then capture the implementation at the baseline
+frame's width and height and compare it with the baseline screenshot using
+vision. This verification is required for visual work. Before calling the
+result complete, run the offline copy provenance gate
 against the one state evidence file used as the baseline, or the combined
 `visible-evidence.json` when the code implements multiple inspected states. If
 bounded state data omitted copy visible in a viewed detail screenshot, add the

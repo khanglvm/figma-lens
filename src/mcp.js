@@ -9,6 +9,7 @@ import * as z from "zod/v4";
 import { FigmaApi } from "./api.js";
 import { parseFigmaRef } from "./ref.js";
 import { searchSpec } from "./simplify.js";
+import { FIGMA_LENS_VERSION } from "./version.js";
 import {
   detail,
   focus,
@@ -71,7 +72,7 @@ function register(server, name, config, handler) {
 }
 
 export function buildMcpServer({ token } = {}) {
-  const server = new McpServer({ name: "figma-lens", version: "0.2.0" });
+  const server = new McpServer({ name: "figma-lens", version: FIGMA_LENS_VERSION });
 
   register(server, "figma_lens_scout", {
     title: "Scout a Figma design",
@@ -96,7 +97,7 @@ export function buildMcpServer({ token } = {}) {
 
   register(server, "figma_lens_focus", {
     title: "Focus representative Figma states",
-    description: "Focus one exact target or 2-6 representative states returned by figma_lens_scout. Returns source-size screenshots, visible-copy evidence, compact geometry paths, and exported distinctive assets. View the images and choose one baseline before implementation.",
+    description: "Focus one exact target or 2-6 representative states returned by figma_lens_scout. Returns source-size screenshots, visible-copy evidence, compact geometry, an inline typography catalog with exact font faces/metrics, and exported assets. Choose one baseline and verify its fonts are loaded before implementation.",
     inputSchema: z.object({
       url: URL,
       node_ids: z.array(z.string()).min(1).max(6).describe("Exact node IDs returned by scout, such as 12:34"),
@@ -115,7 +116,7 @@ export function buildMcpServer({ token } = {}) {
 
   register(server, "figma_lens_detail", {
     title: "Inspect source-size child details",
-    description: "Use once after choosing a focused baseline. Isolates 1-4 visually important child groups at 1x-4x and returns exact size, padding, gap, radius, stroke, color, effect, typography, and image content. Never estimate a large element from a tiny parent preview.",
+    description: "Use once after choosing a focused baseline. Isolates 1-4 important child groups at 1x-4x and returns exact geometry, colors/effects, font family/PostScript face/weight/size/line-height/tracking, mixed-style runs, and image content. Verify fonts locally. Never estimate from a tiny parent preview.",
     inputSchema: z.object({
       url: URL.describe("Focused single-node Figma URL"),
       intent: z.string().max(500).describe("Comma-separated visible child groups, for example candidate card, query bar, city filter"),
@@ -132,7 +133,7 @@ export function buildMcpServer({ token } = {}) {
 
   register(server, "figma_lens_inspect", {
     title: "Inspect one exact Figma node",
-    description: "Bounded inspection for a known exact single frame or component. For boards and multi-state links, use figma_lens_scout instead. Returns compact spec/summary/evidence and a screenshot without dumping raw Figma JSON.",
+    description: "Bounded inspection for a known exact single frame or component. For boards and multi-state links, use figma_lens_scout. Returns compact spec, screenshot, evidence, and an inline exact typography catalog without dumping raw Figma JSON.",
     inputSchema: z.object({
       url: URL,
       depth: z.number().int().min(1).max(12).optional(),

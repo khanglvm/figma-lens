@@ -1,6 +1,7 @@
 import { basename, join } from "node:path";
 import { cacheDirectory, exists, projectNodeFromBatchCache, readJson, resolveOfflineCache, withFileLock, writeJsonAtomic, writeTextAtomic } from "./cache.js";
 import {
+  compactTypography,
   imageRefsFromRaw,
   implementationContract,
   isNodeVisible,
@@ -8,6 +9,7 @@ import {
   simplifyResponse,
   specTree,
   summaryMarkdown,
+  typographyCatalog,
   visibleEvidence,
 } from "./simplify.js";
 import { detailCandidates } from "./detail.js";
@@ -24,6 +26,7 @@ function artifactPaths(directory) {
     spec: join(directory, "spec.json"),
     summary: join(directory, "summary.md"),
     contract: join(directory, "contract.json"),
+    typography: join(directory, "typography.json"),
     evidence: join(directory, "visible-evidence.json"),
     manifest: join(directory, "manifest.json"),
   };
@@ -248,6 +251,7 @@ export async function prepareData(api, ref, options = {}) {
   }
   await writeJsonAtomic(paths.spec, spec);
   await writeJsonAtomic(paths.contract, implementationContract(spec));
+  await writeJsonAtomic(paths.typography, typographyCatalog(spec));
   await writeJsonAtomic(paths.evidence, visibleEvidence(spec));
   await writeTextAtomic(paths.summary, summaryMarkdown(spec, { evidence: paths.evidence }));
 
@@ -401,11 +405,13 @@ export async function inspect(api, ref, options = {}) {
       spec: prepared.paths.spec,
       summary: prepared.paths.summary,
       contract: prepared.paths.contract,
+      typography: prepared.paths.typography,
       evidence: prepared.paths.evidence,
       screenshots: screenshot.paths,
       assets: assets?.assets ?? [],
       missingAssets: assets?.missing ?? [],
     },
+    typography: compactTypography(prepared.spec),
     apiCalls: publicCalls(api),
   };
   await writeJsonAtomic(prepared.paths.manifest, manifest);
@@ -567,6 +573,7 @@ export async function focus(api, ref, nodeId, options = {}) {
     spec: join(directory, "spec.json"),
     summary: join(directory, "summary.md"),
     contract: join(directory, "contract.json"),
+    typography: join(directory, "typography.json"),
     evidence: join(directory, "visible-evidence.json"),
     manifest: join(directory, "manifest.json"),
   };
@@ -584,6 +591,8 @@ export async function focus(api, ref, nodeId, options = {}) {
   const visualAssets = await prepareVisualAssets(api, spec, ref, directory, options);
   await writeJsonAtomic(paths.spec, spec);
   await writeJsonAtomic(paths.contract, implementationContract(spec));
+  const typography = typographyCatalog(spec);
+  await writeJsonAtomic(paths.typography, typography);
   const evidence = visibleEvidence(spec, { screenshots: screenshot.paths });
   await writeJsonAtomic(paths.evidence, evidence);
   await writeTextAtomic(paths.summary, summaryMarkdown(spec, {
@@ -614,8 +623,10 @@ export async function focus(api, ref, nodeId, options = {}) {
       summary: paths.summary,
       contract: paths.contract,
       evidence: paths.evidence,
+      typography: paths.typography,
       screenshots: screenshot.paths,
     },
+    typography: compactTypography(spec),
     fidelity: {
       lockedState: node.id,
       hiddenSubtreesExcluded: true,
@@ -667,6 +678,7 @@ export async function focusMany(api, ref, nodeIds, options = {}) {
     spec: join(prepared.directory, "spec.json"),
     summary: join(prepared.directory, "summary.md"),
     contract: join(prepared.directory, "contract.json"),
+    typography: join(prepared.directory, "typography.json"),
     evidence: join(prepared.directory, "visible-evidence.json"),
     manifest: join(prepared.directory, "manifest.json"),
   };
@@ -681,6 +693,8 @@ export async function focusMany(api, ref, nodeIds, options = {}) {
   const visualAssets = await prepareVisualAssets(api, spec, ref, prepared.directory, options);
   await writeJsonAtomic(paths.spec, spec);
   await writeJsonAtomic(paths.contract, implementationContract(spec));
+  const typography = typographyCatalog(spec);
+  await writeJsonAtomic(paths.typography, typography);
   const evidence = visibleEvidence(spec, { screenshots: screenshots.paths });
   await writeJsonAtomic(paths.evidence, evidence);
   const stateEvidencePaths = [];
@@ -723,9 +737,11 @@ export async function focusMany(api, ref, nodeIds, options = {}) {
       summary: paths.summary,
       contract: paths.contract,
       evidence: paths.evidence,
+      typography: paths.typography,
       stateEvidence: stateEvidencePaths,
       screenshots: screenshots.paths,
     },
+    typography: compactTypography(spec),
     fidelity: {
       hiddenSubtreesExcluded: true,
       evidenceCoverage: evidence.states.map((state) => ({ id: state.id, status: state.coverage.status })),
@@ -834,6 +850,13 @@ export async function extractTarget(api, ref, intent, options = {}) {
     selected: focused.selected,
     cache: focused.cache,
     artifacts: focused.artifacts,
+    typography: {
+      visibleTextNodes: focused.typography.visibleTextNodes,
+      mixedStyleNodes: focused.typography.mixedStyleNodes,
+      fontFaces: focused.typography.fontFaces,
+      availability: focused.typography.availability,
+      artifact: focused.artifacts.typography,
+    },
     visualAssets: focused.visualAssets,
     apiCalls: publicCalls(api),
   };
@@ -903,15 +926,20 @@ export async function detail(api, ref, intent, options = {}) {
     );
   }
   const renderedById = new Map(rendered.map((candidate, index) => [candidate.id, screenshots.paths[index]]));
+  const explicitIntentCount = Math.max(1, splitDetailIntents(intent).length);
+  const typographyCandidates = rendered.length ? rendered : catalog.slice(0, Math.min(4, explicitIntentCount));
+  const returnedCandidates = intent
+    ? catalog.slice(0, Math.max(renderCount, explicitIntentCount))
+    : catalog;
   const detailSpec = {
     ...prepared.spec,
-    nodes: rendered.map((candidate) => findSpecNode(prepared.spec, candidate.id)).filter(Boolean),
+    nodes: typographyCandidates.map((candidate) => findSpecNode(prepared.spec, candidate.id)).filter(Boolean),
   };
   const detailEvidencePath = join(prepared.directory, "details", `visible-evidence-${scoutCacheKey(intent)}.json`);
   await writeJsonAtomic(detailEvidencePath, visibleEvidence(detailSpec, { screenshots: screenshots.paths }));
   const detailArtifacts = [];
   const details = [];
-  for (const candidate of catalog) {
+  for (const candidate of returnedCandidates) {
     const screenshot = renderedById.get(candidate.id);
     const scale = options.scale ?? 2;
     const artifact = join(prepared.directory, "details", `detail-${safeId(candidate.id)}.json`);
@@ -928,6 +956,9 @@ export async function detail(api, ref, intent, options = {}) {
       position: candidate.position,
       text: candidate.text,
       geometry: stdoutDetailGeometry(candidate.style),
+      typography: screenshot || candidate.intent || (renderCount === 0 && candidate.rank <= Math.min(4, explicitIntentCount))
+        ? candidate.typography
+        : undefined,
       childCount: candidate.children?.length ?? 0,
       screenshot,
       artifact,
@@ -952,6 +983,7 @@ export async function detail(api, ref, intent, options = {}) {
       size: prepared.spec.nodes[0]?.bounds && `${prepared.spec.nodes[0].bounds.width}×${prepared.spec.nodes[0].bounds.height}`,
       warning: "The parent screenshot is navigation-only: descendants may be visually tiny. Implement detail only after viewing an isolated source-size render below.",
     },
+    typography: compactTypography(detailSpec),
     details,
     artifacts: {
       contract: prepared.paths.contract,
@@ -962,7 +994,7 @@ export async function detail(api, ref, intent, options = {}) {
       screenshots: screenshots.paths,
     },
     next: {
-      guidance: "View each returned detail screenshot at original pixels. Read a detail artifact only when its compact geometry is insufficient; never base64 or inline image bytes into model context.",
+      guidance: "View each returned detail screenshot at original pixels. Apply each detail's exact typography before measuring layout; verify the named font family/weight is loaded in the destination and never silently substitute a fallback. Read a detail artifact only when compact geometry is insufficient; never base64 or inline image bytes into model context.",
       export: details.map((candidate) =>
         `figma-lens export ${shellArg(ref.source)} --node ${shellArg(candidate.id)} --format svg`),
     },
