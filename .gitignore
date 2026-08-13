@@ -1,0 +1,10 @@
+.env
+.env.*
+!.env.example
+node_modules/
+dist/
+coverage/
+.figma-cache/
+.figma-lens/
+.DS_Store
+.code-review-graph/

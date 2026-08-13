@@ -1,0 +1,54 @@
+{
+  "name": "figma-lens",
+  "version": "0.2.0",
+  "description": "Token-efficient, headless Figma inspection for coding agents over CLI or MCP",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/khanglvm/figma-lens.git"
+  },
+  "homepage": "https://github.com/khanglvm/figma-lens#readme",
+  "bugs": {
+    "url": "https://github.com/khanglvm/figma-lens/issues"
+  },
+  "type": "module",
+  "bin": {
+    "figma-lens": "./bin/figma-lens.js"
+  },
+  "files": [
+    "bin/",
+    "src/",
+    "docs/",
+    "skills/",
+    "install.sh",
+    "install.ps1",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node --test",
+    "check": "node --check bin/figma-lens.js && node --test",
+    "prepublishOnly": "npm run check"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "figma",
+    "mcp",
+    "cli",
+    "design-to-code",
+    "coding-agent"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/node": "^2.0.0",
+    "@modelcontextprotocol/server": "^2.0.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/client": "^2.0.0"
+  }
+}
