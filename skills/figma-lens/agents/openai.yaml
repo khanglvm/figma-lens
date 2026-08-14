@@ -1,4 +1,4 @@
 interface:
   display_name: "Figma Lens"
   short_description: "Headless Figma design inspection over CLI or MCP"
-  default_prompt: "Use $figma-lens to inspect the supplied Figma URL through native figma_lens MCP tools when available or the figma-lens CLI otherwise. Catalog boards first, focus representative states, resolve exact fonts and typography, inspect important children at source size, reuse exact assets, and verify visible evidence."
+  default_prompt: "Use $figma-lens to inspect the supplied Figma URL, open every relied-on screenshot through actual vision input, catalog boards before focusing representative states, resolve exact typography, inspect important children at source size, reuse exact assets, and verify visible evidence."
