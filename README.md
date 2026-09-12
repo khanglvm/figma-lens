@@ -45,7 +45,8 @@ commands. Open the returned screenshot to see what was found.
 For a link to one specific screen, use:
 
 ```sh
-figma-lens extract "https://www.figma.com/design/FILE_KEY/File?node-id=1-2"   --intent "the screen I want to build"
+figma-lens extract "https://www.figma.com/design/FILE_KEY/File?node-id=1-2" \
+  --intent "the screen I want to build"
 ```
 
 Results are saved under `.figma-lens/`. Add that directory to `.gitignore`;
