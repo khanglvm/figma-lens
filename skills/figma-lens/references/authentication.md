@@ -61,8 +61,9 @@ In Figma's file browser, open the account menu, choose **Settings**, open
 **Security**, find **Personal access tokens**, and select **Generate new token**.
 Choose an expiration and grant `file_content:read`; add `current_user:read` so
 Figma Lens can validate the account during login. Add `folders:read` when the
-agent needs to discover files across registered teams. Copy the token
-immediately: Figma only shows it once.
+agent needs to discover files across registered teams, and
+`file_metadata:read` for design-URL setup guidance. Copy the token immediately:
+Figma only shows it once.
 
 Never ask the user to paste a token into chat. Ask them to run:
 
@@ -113,6 +114,11 @@ URL from the Figma file browser and register it once:
 figma-lens teams add "https://www.figma.com/files/.../team/TEAM_ID/..."
 figma-lens context
 ```
+
+If the user only knows a design-node URL, pass it to `figma-lens context` or
+`figma-lens teams add`. The response identifies the file and folder when the
+token has `file_metadata:read`, then asks for the owning team-page URL. The agent
+should run `teams add` after the user pastes that URL.
 
 The configuration stores team IDs and names with private filesystem permissions.
 It never stores browser cookies. Use `figma-lens teams remove <team-id>` to

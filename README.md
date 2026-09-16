@@ -31,7 +31,8 @@ figma-lens --version
 
 Create a personal access token in Figma's account settings with
 `file_content:read` and `current_user:read`. Add `folders:read` when you want to
-search across a team. Then sign in through your terminal:
+search across a team, and `file_metadata:read` to identify a file and folder
+during guided setup. Then sign in through your terminal:
 
 ```sh
 figma-lens auth login
@@ -72,6 +73,17 @@ copied from the Figma file browser:
 figma-lens teams add "https://www.figma.com/files/.../team/TEAM_ID/..."
 figma-lens context
 ```
+
+If you only have a design-node URL, Figma Lens can identify its file and folder
+and print the exact team-URL request to send to the user:
+
+```sh
+figma-lens teams add "https://www.figma.com/design/FILE_KEY/File?node-id=1-2"
+```
+
+Paste the requested team-page URL back into `teams add`; Figma Lens extracts the
+numeric ID and remembers the team. A design URL cannot reveal that ID because
+Figma's file metadata omits its parent team.
 
 You can then search by a natural description and narrow it with a team, folder,
 or file name:

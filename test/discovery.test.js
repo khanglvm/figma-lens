@@ -92,6 +92,18 @@ class FakeDiscoveryApi {
     this.record(`v1/files/${fileKey}?depth=${depth}`);
     return { data: this.files[fileKey] };
   }
+
+  async getFileMeta(fileKey) {
+    this.record(`v1/files/${fileKey}/meta`);
+    return {
+      data: {
+        file: {
+          name: this.files[fileKey]?.name ?? "Candidate journeys",
+          folder_name: "Recruitment",
+        },
+      },
+    };
+  }
 }
 
 test("parses team IDs from current Figma team URLs", () => {
@@ -121,6 +133,36 @@ test("registers searchable teams privately and exposes compact account context",
   const removed = await removeTeam("123", { env });
   assert.equal(removed.removed, true);
   assert.deepEqual((await readDiscoveryConfig({ env })).teams, []);
+});
+
+test("turns a design URL into a tailored request for the owning team URL", async () => {
+  const root = await mkdtemp(join(tmpdir(), "figma-lens-team-guide-"));
+  const env = { FIGMA_LENS_CONFIG_DIR: root };
+  const api = new FakeDiscoveryApi();
+  const guided = await addTeam(
+    api,
+    "https://www.figma.com/design/CandidateFile/Journeys?node-id=1-1",
+    { env },
+  );
+  assert.equal(guided.ok, false);
+  assert.equal(guided.status, "needs_team_url");
+  assert.equal(guided.source.fileName, "Recruitment workspace");
+  assert.equal(guided.source.folderName, "Recruitment");
+  assert.match(guided.request, /team containing the "Recruitment" folder/);
+  assert.match(guided.request, /\/team\/<number>\//);
+  assert.match(guided.request, /Do not share a Figma token/);
+  assert.deepEqual((await readDiscoveryConfig({ env })).teams, []);
+
+  const context = await discoveryContext(api, {
+    env,
+    sourceUrl: "https://www.figma.com/design/CandidateFile/Journeys?node-id=1-1",
+  });
+  assert.equal(context.setup.status, "needs_team_url");
+  assert.equal(context.setup.source.folderName, "Recruitment");
+
+  const generic = await addTeam(api, undefined, { env });
+  assert.equal(generic.status, "needs_team_url");
+  assert.match(generic.request, /files you want searched/);
 });
 
 test("finds a fuzzy design match across registered team files with bounded output", async () => {
@@ -167,7 +209,8 @@ test("reports bounded partial coverage and actionable setup gaps", async () => {
   const env = { FIGMA_LENS_CONFIG_DIR: root };
   const missing = await findDesigns(new FakeDiscoveryApi(), "candidate screen", { env, render: 0 });
   assert.equal(missing.status, "needs_setup");
-  assert.match(missing.next.command, /teams add/);
+  assert.match(missing.setup.next.command, /teams add/);
+  assert.match(missing.setup.request, /paste the full team-page URL/);
 
   const api = new FakeDiscoveryApi();
   await addTeam(api, "123", { env });

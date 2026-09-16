@@ -291,6 +291,12 @@ test("CLI registers a team and finds a design across its files", async (context)
       }));
       return;
     }
+    if (request.url === "/v1/files/CandidateFile/meta") {
+      response.end(JSON.stringify({
+        file: { name: "Candidate journeys", folder_name: "Recruitment", editorType: "figma" },
+      }));
+      return;
+    }
     if (request.url === "/v1/files/CandidateFile?depth=3") {
       response.end(JSON.stringify({
         name: "Candidate journeys",
@@ -338,6 +344,16 @@ test("CLI registers a team and finds a design across its files", async (context)
     FIGMA_LENS_CONFIG_DIR: config,
     FIGMA_API_BASE_URL: `http://127.0.0.1:${server.address().port}`,
   };
+  const guided = await execFileAsync(process.execPath, [
+    resolve("bin/figma-lens.js"),
+    "teams",
+    "add",
+    "https://www.figma.com/design/CandidateFile/Journeys?node-id=1-1",
+  ], { cwd: resolve("."), env: environment });
+  const guide = JSON.parse(guided.stdout);
+  assert.equal(guide.status, "needs_team_url");
+  assert.equal(guide.source.folderName, "Recruitment");
+
   const added = await execFileAsync(process.execPath, [
     resolve("bin/figma-lens.js"),
     "teams",

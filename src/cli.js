@@ -23,8 +23,8 @@ const HELP = `figma-lens — token-efficient, headless Figma inspection over CLI
 
 Usage:
   figma-lens auth <login|status|logout|path>
-  figma-lens context [--refresh]
-  figma-lens teams <add|list|remove> [team-url-or-id]
+  figma-lens context [design-url] [--refresh]
+  figma-lens teams <add|list|remove> [team-or-design-url]
   figma-lens find <description> [--scope <team-folder-or-file>] [options]
   figma-lens mcp [--http] [--host 127.0.0.1] [--port 3333]
   figma-lens extract <url-or-key> --intent <target> [options]
@@ -294,7 +294,7 @@ export async function main(argv = process.argv.slice(2), dependencies = {}) {
   }
 
   if (command === "context") {
-    printJson(await discoveryContext(api, { ...options, env: process.env }));
+    printJson(await discoveryContext(api, { ...options, env: process.env, sourceUrl: positionals[0] }));
     return 0;
   }
 
@@ -305,7 +305,6 @@ export async function main(argv = process.argv.slice(2), dependencies = {}) {
       return 0;
     }
     if (action === "add") {
-      if (!positionals[1]) throw new Error("teams add requires a Figma team URL or numeric team ID");
       printJson(await addTeam(api, positionals[1], { env: process.env }));
       return 0;
     }

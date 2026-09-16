@@ -101,7 +101,12 @@ async function configuredTeams(options = {}) {
 }
 
 export async function addTeam(api, value, options = {}) {
-  const id = parseTeamId(value);
+  let id;
+  try {
+    id = parseTeamId(value);
+  } catch {
+    return { ok: false, ...(await teamSetupGuide(api, value)) };
+  }
   const { data } = await api.getTeamFolders(id);
   const config = await readDiscoveryConfig(options);
   const now = new Date().toISOString();
@@ -115,6 +120,41 @@ export async function addTeam(api, value, options = {}) {
   config.teams = [...config.teams.filter((item) => item.id !== id), team];
   await writeDiscoveryConfig(config, options);
   return { ok: true, team, folderCount: data.folders?.length ?? 0, path: discoveryConfigPath(options) };
+}
+
+export async function teamSetupGuide(api, sourceUrl) {
+  let source;
+  if (sourceUrl) {
+    try {
+      const ref = parseFigmaRef(sourceUrl);
+      source = { fileKey: ref.fileKey };
+      try {
+        const { data } = await api.getFileMeta(ref.fileKey);
+        source = {
+          ...source,
+          fileName: data.file?.name,
+          folderName: data.file?.folder_name,
+        };
+      } catch (error) {
+        source.metadataStatus = error.status ? `unavailable-${error.status}` : "unavailable";
+      }
+    } catch {}
+  }
+  const location = source?.folderName
+    ? `the "${source.folderName}" folder`
+    : source?.fileName
+      ? `the "${source.fileName}" file`
+      : "the files you want searched";
+  return {
+    required: true,
+    status: "needs_team_url",
+    reason: source
+      ? "A design URL identifies a file and node, while Figma's REST API does not expose that file's parent team ID."
+      : "Figma's REST API does not list the current user's team IDs.",
+    source,
+    request: `Please open Figma's file browser, click the team containing ${location}, and paste the full team-page URL. It should contain /team/<number>/. Do not share a Figma token.`,
+    next: { command: "figma-lens teams add <PASTED_TEAM_URL>" },
+  };
 }
 
 export async function removeTeam(value, options = {}) {
@@ -171,6 +211,9 @@ export async function discoveryContext(api, options = {}) {
     config.teams = teams.filter((team) => configuredIds.has(team.id));
     await writeDiscoveryConfig(config, options);
   }
+  const setup = teams.length
+    ? { required: false }
+    : await teamSetupGuide(api, options.sourceUrl);
   return {
     ok: true,
     account,
@@ -181,13 +224,7 @@ export async function discoveryContext(api, options = {}) {
       verifiedAt: team.verifiedAt,
       topLevelFolders: team.topLevelFolders,
     })),
-    setup: {
-      required: teams.length === 0,
-      reason: teams.length === 0
-        ? "Figma does not expose a token-to-team listing endpoint. Register one team URL before workspace search."
-        : undefined,
-      command: teams.length === 0 ? "figma-lens teams add <FIGMA_TEAM_URL>" : undefined,
-    },
+    setup,
     failures: failures.length ? failures : undefined,
     api: apiCallSummary(api),
   };
@@ -542,12 +579,13 @@ export async function findDesigns(api, query, options = {}) {
     ? requestedTeamIds.map((id) => teamMap.get(id) ?? { id, source: "request" })
     : storedTeams;
   if (!teams.length) {
+    const setup = await teamSetupGuide(api, options.sourceUrl);
     return {
       ok: false,
       status: "needs_setup",
       query,
-      reason: "Figma does not expose the current user's team IDs through the REST API.",
-      next: { command: "figma-lens teams add <FIGMA_TEAM_URL>" },
+      reason: setup.reason,
+      setup,
     };
   }
 

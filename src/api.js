@@ -242,6 +242,10 @@ export class FigmaApi {
     });
   }
 
+  getFileMeta(fileKey) {
+    return this.request(`v1/files/${encodeURIComponent(fileKey)}/meta`);
+  }
+
   getFile(fileKey, { depth } = {}) {
     return this.request(`v1/files/${encodeURIComponent(fileKey)}`, { depth });
   }

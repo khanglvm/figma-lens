@@ -45,12 +45,30 @@ or text match without visual confirmation is insufficient.
 ## Team setup
 
 Figma's REST API does not expose the current user's team IDs. When `find`
-returns `needs_setup`, ask the user to run its one-time setup command:
+returns `needs_setup`, ask the user for a team-page URL. The user does not need
+to identify or type the numeric ID.
+
+If the user supplied a design-node URL, pass it to `figma_lens_context` as
+`source_url`. In CLI mode, this equivalent command reads the file and folder
+name without registering anything:
 
 ```bash
-figma-lens teams add "<FIGMA_TEAM_URL>"
+figma-lens teams add "<FIGMA_DESIGN_NODE_URL>"
 ```
 
-After registration, `context` identifies the account and searchable team names,
-while `find` resolves fuzzy team, folder, and file scopes. Keep discovery on the
-documented REST endpoints and registered scopes.
+Ask the single question returned in `setup.request`. It tells the user to open
+Figma's file browser, click the team containing the identified folder or file,
+and paste the address-bar URL containing `/team/<number>/`. Ask for the full URL,
+never a token.
+
+When the user replies, run the setup yourself:
+
+```bash
+figma-lens teams add "<PASTED_TEAM_URL>"
+figma-lens context --refresh
+```
+
+Then retry the original `find` call. After registration, `context` identifies
+the account and searchable team names, while `find` resolves fuzzy team, folder,
+and file scopes. Keep discovery on the documented REST endpoints and registered
+scopes.

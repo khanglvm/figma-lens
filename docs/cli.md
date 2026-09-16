@@ -9,8 +9,8 @@ of placing raw Figma responses in agent context.
 ```text
 figma-lens auth <login|status|logout|path>
 figma-lens doctor
-figma-lens context [--refresh]
-figma-lens teams <add|list|remove> [team-url-or-id]
+figma-lens context [design-url] [--refresh]
+figma-lens teams <add|list|remove> [team-or-design-url]
 figma-lens find <description> [--scope <team-folder-or-file>] [--max-files 8]
 figma-lens extract <url-or-key> --intent <implementation-target>
 figma-lens scout <wrapper-url> [<intent> | --intent <text>] [--render 2]
@@ -48,6 +48,13 @@ figma-lens context
 stores its ID and name in the private OS configuration directory. `context`
 returns the authenticated account and registered team names. `teams remove`
 removes a search scope locally.
+
+When only a design-node URL is available, pass it to `context` or `teams add`.
+Figma Lens calls `GET /v1/files/:key/meta` and returns the file name, folder
+name, and a ready-to-send request for the owning team-page URL. File metadata
+does not contain a folder ID or team ID, so the user still needs to paste one
+team URL from the Figma file browser. The agent should run the returned setup
+command after receiving that URL.
 
 Search registered teams with a natural description:
 

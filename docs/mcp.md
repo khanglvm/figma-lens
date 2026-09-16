@@ -29,7 +29,8 @@ figma-lens context
 ```
 
 The token needs `folders:read` as well as the normal file and user read scopes.
-Figma does not provide an API that lists team IDs for the current user.
+Add `file_metadata:read` for design-URL setup guidance. Figma does not provide
+an API that lists team IDs for the current user.
 
 For one self-hosted endpoint shared by clients:
 
@@ -69,3 +70,9 @@ most two candidate screenshots. It keeps the full ranking and request details in
 a local artifact. Agents should call `figma_lens_context` only when the user's
 team or workspace name is unclear; otherwise they can pass the user's scope
 directly to `figma_lens_find`.
+
+When no team is registered, pass an available design-node URL as
+`figma_lens_context.source_url`. The tool returns the file and folder names plus
+a concise question asking the user to paste the owning team-page URL. Once the
+user responds, run `figma-lens teams add "<PASTED_TEAM_URL>"` and repeat the
+search.

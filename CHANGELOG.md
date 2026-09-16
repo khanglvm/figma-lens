@@ -2,6 +2,12 @@
 
 This file records user-visible changes to Figma Lens.
 
+## 0.3.1 - 2026-09-16
+
+- Added file-metadata guidance when team setup starts from a design-node URL.
+- Updated CLI and MCP context output with a concise request for the owning team-page URL.
+- Updated the agent skill so the agent asks the user for that URL, registers it itself, and retries the original search.
+
 ## 0.3.0 - 2026-09-16
 
 - Added cross-file design discovery through registered Figma teams and nested folders.

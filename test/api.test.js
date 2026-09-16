@@ -64,6 +64,24 @@ test("uses current folder discovery endpoints without leaking scope data", async
   assert.ok(requests.every((value) => !value.includes("secret-token")));
 });
 
+test("retrieves bounded file metadata for team setup guidance", async () => {
+  let request;
+  const api = new FigmaApi({
+    token: "secret-token",
+    fetchImpl: async (url) => {
+      request = String(url);
+      return new Response(JSON.stringify({ file: { name: "Candidate journeys", folder_name: "Recruitment" } }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    },
+  });
+  const result = await api.getFileMeta("CandidateFile");
+  assert.equal(new URL(request).pathname, "/v1/files/CandidateFile/meta");
+  assert.equal(result.data.file.folder_name, "Recruitment");
+  assert.doesNotMatch(request, /secret-token/);
+});
+
 test("returns actionable 404 errors without exposing the token", async () => {
   const api = new FigmaApi({
     token: "never-print-me",

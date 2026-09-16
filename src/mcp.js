@@ -77,11 +77,14 @@ export function buildMcpServer({ token } = {}) {
 
   register(server, "figma_lens_context", {
     title: "Identify Figma account and search scopes",
-    description: "Use when a workspace-search request has an unclear team. Returns the current account and registered team names without layer data.",
-    inputSchema: z.object({ refresh: BOOL }),
-  }, async ({ refresh = false }) => {
+    description: "Use when a workspace-search request has an unclear team. Returns the account, registered teams, or a user-ready team-URL request tailored from a design URL.",
+    inputSchema: z.object({
+      source_url: URL.optional().describe("Optional design-node URL used to identify the file and folder in the setup request"),
+      refresh: BOOL,
+    }),
+  }, async ({ source_url: sourceUrl, refresh = false }) => {
     const client = api(token);
-    return toolResult(await discoveryContext(client, { refresh }));
+    return toolResult(await discoveryContext(client, { sourceUrl, refresh }));
   });
 
   register(server, "figma_lens_find", {
