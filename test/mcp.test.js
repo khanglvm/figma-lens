@@ -14,6 +14,8 @@ test("MCP advertises one compact read-only Figma workflow", async () => {
   try {
     const result = await client.listTools();
     assert.deepEqual(result.tools.map((tool) => tool.name), [
+      "figma_lens_context",
+      "figma_lens_find",
       "figma_lens_scout",
       "figma_lens_focus",
       "figma_lens_detail",
@@ -22,8 +24,9 @@ test("MCP advertises one compact read-only Figma workflow", async () => {
       "figma_lens_render",
     ]);
     assert.ok(result.tools.every((tool) => tool.annotations?.readOnlyHint === true));
-    assert.match(result.tools[0].description, /FIRST call/);
-    assert.match(result.tools[2].description, /Never estimate/);
+    assert.match(result.tools[1].description, /no file URL/);
+    assert.match(result.tools[2].description, /FIRST call/);
+    assert.match(result.tools[4].description, /Never estimate/);
   } finally {
     await client.close();
     await handler.close();

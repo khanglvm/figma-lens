@@ -7,6 +7,7 @@ import { createMcpHandler, McpServer } from "@modelcontextprotocol/server";
 import { serveStdio } from "@modelcontextprotocol/server/stdio";
 import * as z from "zod/v4";
 import { FigmaApi } from "./api.js";
+import { discoveryContext, findDesigns } from "./discovery.js";
 import { parseFigmaRef } from "./ref.js";
 import { searchSpec } from "./simplify.js";
 import { FIGMA_LENS_VERSION } from "./version.js";
@@ -73,6 +74,44 @@ function register(server, name, config, handler) {
 
 export function buildMcpServer({ token } = {}) {
   const server = new McpServer({ name: "figma-lens", version: FIGMA_LENS_VERSION });
+
+  register(server, "figma_lens_context", {
+    title: "Identify Figma account and search scopes",
+    description: "Use when a workspace-search request has an unclear team. Returns the current account and registered team names without layer data.",
+    inputSchema: z.object({ refresh: BOOL }),
+  }, async ({ refresh = false }) => {
+    const client = api(token);
+    return toolResult(await discoveryContext(client, { refresh }));
+  });
+
+  register(server, "figma_lens_find", {
+    title: "Find designs across teams and folders",
+    description: "Use when the user describes a design but gives no file URL. Fuzzy-searches registered teams, folders, files, node names, and visible text; returns at most a few ranked nodes and two screenshots.",
+    inputSchema: z.object({
+      query: z.string().min(1).max(500).describe("Natural-language description or keywords"),
+      scope: z.string().min(1).max(200).optional().describe("Optional fuzzy team, folder, or file name from the user"),
+      team_ids: z.array(z.string()).max(8).optional().describe("Known team IDs or Figma team URLs; usually omit after teams add"),
+      max_files: z.number().int().min(1).max(30).optional().describe("Maximum uncached files indexed in this call; default 8"),
+      limit: z.number().int().min(1).max(8).optional(),
+      render: z.number().int().min(0).max(2).optional(),
+      depth: z.number().int().min(2).max(6).optional(),
+      offline: BOOL,
+      refresh: BOOL,
+    }),
+  }, async ({ query, scope, team_ids: teamIds, max_files: maxFiles = 8, limit = 5, render = 2, depth = 3, offline = false, refresh = false }) => {
+    const client = api(token);
+    const result = await findDesigns(client, query, {
+      scope,
+      teamIds: teamIds?.join(","),
+      maxFiles,
+      limit,
+      render,
+      depth,
+      offline,
+      refresh,
+    });
+    return toolResult(result, result.matches?.map((match) => match.screenshot));
+  });
 
   register(server, "figma_lens_scout", {
     title: "Scout a Figma design",
@@ -148,7 +187,7 @@ export function buildMcpServer({ token } = {}) {
 
   register(server, "figma_lens_search", {
     title: "Search a Figma subtree",
-    description: "Search node names and visible text inside one bounded Figma subtree using natural-language or keywords. Cache-first and compact; use a focused node URL when possible.",
+    description: "Search names and visible text inside one known file URL. For discovery across files, use figma_lens_find.",
     inputSchema: z.object({
       url: URL,
       query: z.string().min(1).max(500),

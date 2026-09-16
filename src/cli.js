@@ -2,6 +2,7 @@ import { FigmaApi, FigmaApiError } from "./api.js";
 import { readFile } from "node:fs/promises";
 import { credentialPath, readStoredCredential, removeCredential, resolveTokenSync, storeCredential } from "./credentials.js";
 import { checkImplementationCopy } from "./copy.js";
+import { addTeam, discoveryContext, findDesigns, removeTeam } from "./discovery.js";
 import { parseFigmaRef, parseNodeIds } from "./ref.js";
 import { evidenceCoverage, searchSpec } from "./simplify.js";
 import { FIGMA_LENS_VERSION } from "./version.js";
@@ -22,6 +23,9 @@ const HELP = `figma-lens — token-efficient, headless Figma inspection over CLI
 
 Usage:
   figma-lens auth <login|status|logout|path>
+  figma-lens context [--refresh]
+  figma-lens teams <add|list|remove> [team-url-or-id]
+  figma-lens find <description> [--scope <team-folder-or-file>] [options]
   figma-lens mcp [--http] [--host 127.0.0.1] [--port 3333]
   figma-lens extract <url-or-key> --intent <target> [options]
   figma-lens detail <focused-url> [--intent <child-groups>] [options]
@@ -53,6 +57,9 @@ Options:
   --max-nodes <n>       Maximum printed tree nodes (default: 300)
   --limit <n>           Maximum matches (search: 20; scout: 5)
   --render <n>          Candidates/details to batch-render
+  --scope <text>        Fuzzy team, folder, or file scope for workspace find
+  --team <ids>          Comma-separated team IDs or URLs; overrides setup gaps
+  --max-files <n>       Maximum uncached files indexed by one find (default: 8)
   --intent <text>       Scout intent; positional intent remains supported
   --text <text>         Exact visible copy for evidence-check; repeat with | separators
   --allow <text>        Exact screenshot-only copy for copy-check; separate with |
@@ -69,7 +76,7 @@ Options:
   -h, --help            Show help
 `;
 
-const valueFlags = new Set(["node", "depth", "output", "scale", "format", "max-depth", "max-nodes", "limit", "concurrency", "render", "select", "intent", "text", "allow", "evidence", "token-file", "host", "port"]);
+const valueFlags = new Set(["node", "depth", "output", "scale", "format", "max-depth", "max-nodes", "limit", "concurrency", "render", "select", "intent", "text", "allow", "evidence", "token-file", "host", "port", "scope", "team", "max-files"]);
 const booleanFlags = new Set(["assets", "export-assets", "no-export-assets", "no-screenshot", "offline", "refresh", "help", "use-absolute-bounds", "token-stdin", "http"]);
 
 function parseArgs(args) {
@@ -139,6 +146,9 @@ function optionsFrom(flags) {
     concurrency: positiveInteger(flags.concurrency, "concurrency", 4),
     render: flags.render === undefined ? undefined : integer(flags.render, "render"),
     select: flags.select,
+    scope: flags.scope,
+    teamIds: flags.team,
+    maxFiles: flags["max-files"] === undefined ? undefined : positiveInteger(flags["max-files"], "max-files"),
   };
 }
 
@@ -280,6 +290,43 @@ export async function main(argv = process.argv.slice(2), dependencies = {}) {
   if (command === "doctor") {
     const { data, rate } = await api.me();
     printJson({ ok: true, account: { id: data.id, handle: data.handle }, rate, apiCalls: api.calls });
+    return 0;
+  }
+
+  if (command === "context") {
+    printJson(await discoveryContext(api, { ...options, env: process.env }));
+    return 0;
+  }
+
+  if (command === "teams") {
+    const action = positionals[0];
+    if (action === "list") {
+      printJson(await discoveryContext(api, { ...options, env: process.env }));
+      return 0;
+    }
+    if (action === "add") {
+      if (!positionals[1]) throw new Error("teams add requires a Figma team URL or numeric team ID");
+      printJson(await addTeam(api, positionals[1], { env: process.env }));
+      return 0;
+    }
+    if (action === "remove") {
+      if (!positionals[1]) throw new Error("teams remove requires a Figma team URL or numeric team ID");
+      printJson(await removeTeam(positionals[1], { env: process.env }));
+      return 0;
+    }
+    throw new Error("teams requires add, list, or remove");
+  }
+
+  if (command === "find") {
+    const query = positionals.join(" ").trim();
+    if (!query) throw new Error("find requires a natural-language description or keywords");
+    printJson(await findDesigns(api, query, {
+      ...options,
+      env: process.env,
+      depth: flags.depth === undefined ? 3 : options.depth,
+      limit: flags.limit === undefined ? 5 : options.limit,
+      render: flags.render === undefined ? 2 : options.render,
+    }));
     return 0;
   }
 

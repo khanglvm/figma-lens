@@ -9,6 +9,9 @@ of placing raw Figma responses in agent context.
 ```text
 figma-lens auth <login|status|logout|path>
 figma-lens doctor
+figma-lens context [--refresh]
+figma-lens teams <add|list|remove> [team-url-or-id]
+figma-lens find <description> [--scope <team-folder-or-file>] [--max-files 8]
 figma-lens extract <url-or-key> --intent <implementation-target>
 figma-lens scout <wrapper-url> [<intent> | --intent <text>] [--render 2]
 figma-lens focus <wrapper-url> --select <node-id> [--depth 6]
@@ -29,6 +32,48 @@ figma-lens mcp [--http] [--host 127.0.0.1] [--port 3333]
 Run `figma-lens <command> --help` for the current option list.
 
 ## Retrieval commands
+
+### `context`, `teams`, and `find`
+
+Use workspace discovery when the user describes a design without providing a
+file URL. Figma does not expose an endpoint that lists the current user's team
+IDs, so each searchable team needs one initial registration:
+
+```bash
+figma-lens teams add "$FIGMA_TEAM_URL"
+figma-lens context
+```
+
+`teams add` validates the team through `GET /v2/teams/:team_id/folders` and
+stores its ID and name in the private OS configuration directory. `context`
+returns the authenticated account and registered team names. `teams remove`
+removes a search scope locally.
+
+Search registered teams with a natural description:
+
+```bash
+figma-lens find "screen where a recruiter filters candidates and sees no results" \
+  --scope "Product Design / Recruitment" --render 2
+```
+
+`--scope` fuzzily matches a registered team, folder path, or file name. Omit it
+to search all registered teams. `--team` accepts comma-separated IDs or team
+URLs for one-shot use. The result contains at most five matches by default,
+two candidate screenshots, copy-ready focus commands, and an explicit coverage
+summary.
+
+The discovery index reads names, visible text, component metadata, hierarchy,
+and annotations at depth 3. One call indexes at most eight uncached files by
+default. Cached files are always searched without consuming that budget. Use
+`--max-files` to widen a partial search, `--offline` for cache-only retrieval,
+or `--refresh` when the remote catalog may have changed. Full candidate details
+and API diagnostics stay in the returned artifact instead of stdout.
+
+When a user supplies a reference screenshot, the agent should derive a short
+query from exact visible copy, screen purpose or state, controls, and distinctive
+layout. It then runs `find`, views candidate 1 and candidate 2 only when needed,
+and compares them visually. Figma has no image-similarity endpoint, so the agent
+performs the final visual match.
 
 ### `extract`
 
@@ -108,6 +153,10 @@ Repeated commands reuse the cache. Use `--refresh` only when current remote
 state is required. Atomic writes and cross-process locks prevent concurrent
 agents from duplicating the same cold request.
 
+Workspace discovery uses a private cross-project cache below the OS config
+directory so later agents can search the same indexed teams from any working
+directory. `--output` overrides that discovery root for isolated runs.
+
 Typical cold request budgets:
 
 - Catalog `scout`: one node request and one overview render.
@@ -127,6 +176,7 @@ Typical cold request budgets:
 | `FIGMA_LENS_ENV_FILE` | Explicit env file containing the token |
 | `FIGMA_LENS_CACHE_DIR` | Cache root; defaults to `.figma-lens` |
 | `FIGMA_LENS_CONFIG_DIR` | Override the OS config directory |
+| `FIGMA_LENS_TEAM_IDS` | Comma-separated team IDs or URLs added as read-only search scopes |
 | `FIGMA_LENS_MCP_TOKEN` | Separate inbound bearer secret for non-loopback MCP HTTP |
 | `FIGMA_LENS_ALLOWED_ORIGINS` | Allowed browser origins for non-loopback MCP HTTP |
 | `FIGMA_API_BASE_URL` | Test/development API override |

@@ -20,6 +20,17 @@ The process uses the credential saved by `figma-lens auth login`, or a
 host supports environment-variable references; `--token-stdin` is deliberately
 unavailable because stdio is the MCP protocol channel.
 
+For cross-file discovery, register searchable teams once from the CLI before
+starting the MCP server:
+
+```bash
+figma-lens teams add "https://www.figma.com/files/.../team/TEAM_ID/..."
+figma-lens context
+```
+
+The token needs `folders:read` as well as the normal file and user read scopes.
+Figma does not provide an API that lists team IDs for the current user.
+
 For one self-hosted endpoint shared by clients:
 
 ```bash
@@ -40,6 +51,8 @@ layer; the built-in bearer gate is intended for controlled self-hosting.
 
 Tools:
 
+- `figma_lens_context`: current account and registered team search scopes
+- `figma_lens_find`: fuzzy design discovery across teams, folders, and files
 - `figma_lens_scout`: bounded visual overview and state/target catalog
 - `figma_lens_focus`: one exact node or 2-6 representative states
 - `figma_lens_detail`: source-size visual and geometry for important children
@@ -50,3 +63,9 @@ Tools:
 Each tool returns a compact JSON manifest plus at most six image content blocks.
 The JSON navigates the design; the images provide the primary visual evidence.
 No tool returns the raw Figma document tree by default.
+
+`figma_lens_find` returns no more than the requested match limit and attaches at
+most two candidate screenshots. It keeps the full ranking and request details in
+a local artifact. Agents should call `figma_lens_context` only when the user's
+team or workspace name is unclear; otherwise they can pass the user's scope
+directly to `figma_lens_find`.

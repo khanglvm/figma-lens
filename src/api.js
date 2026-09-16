@@ -228,6 +228,20 @@ export class FigmaApi {
     return this.request("v1/me");
   }
 
+  getTeamFolders(teamId) {
+    return this.request(`v2/teams/${encodeURIComponent(teamId)}/folders`);
+  }
+
+  getFolderFolders(folderId) {
+    return this.request(`v2/folders/${encodeURIComponent(folderId)}/folders`);
+  }
+
+  getFolderFiles(folderId, { branchData = false } = {}) {
+    return this.request(`v2/folders/${encodeURIComponent(folderId)}/files`, {
+      branch_data: branchData || undefined,
+    });
+  }
+
   getFile(fileKey, { depth } = {}) {
     return this.request(`v1/files/${encodeURIComponent(fileKey)}`, { depth });
   }

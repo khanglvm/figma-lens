@@ -226,6 +226,22 @@ test("focus exports stable distinctive visual nodes and writes a compact contrac
   assert.equal(api.calls.filter((call) => call.path === "v1/images/Scout123").length, 2);
 });
 
+test("focus uses one content request for an exact selected-node URL", async () => {
+  const cacheRoot = await mkdtemp(join(tmpdir(), "figma-lens-direct-focus-"));
+  const api = new ScoutApi();
+  const focused = await focus(
+    api,
+    { fileKey: "Scout123", nodeIds: ["10:3"], source: "https://www.figma.com/design/Scout123/Test?node-id=10-3" },
+    "10:3",
+    { cacheRoot, scale: 1 },
+  );
+
+  assert.equal(focused.selected.id, "10:3");
+  assert.equal(api.calls.filter((call) => call.path === "v1/files/Scout123/nodes").length, 1);
+  assert.equal(api.calls.filter((call) => call.path === "v1/images/Scout123").length, 1);
+  assert.equal(focused.cache.wrapperDirectory, undefined);
+});
+
 test("detail returns source geometry and one batched 2x child render", async () => {
   const cacheRoot = await mkdtemp(join(tmpdir(), "figma-lens-detail-"));
   const focusedRef = { fileKey: "Scout123", nodeIds: ["10:3"], source: "test" };

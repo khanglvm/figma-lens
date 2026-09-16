@@ -542,16 +542,20 @@ export async function scout(api, ref, intent, options = {}) {
 }
 
 export async function focus(api, ref, nodeId, options = {}) {
-  const wrapperPrepared = await prepareData(api, ref, { ...options, depth: 2 });
-  const catalogNode = findSpecNode(wrapperPrepared.spec, nodeId);
-  if (!catalogNode) {
-    throw new Error(`Node ${nodeId} is not inside the cached wrapper subtree`);
+  const directSelection = ref.nodeIds.length === 1 && ref.nodeIds[0] === nodeId;
+  let wrapperPrepared;
+  if (!directSelection) {
+    wrapperPrepared = await prepareData(api, ref, { ...options, depth: 2 });
+    const catalogNode = findSpecNode(wrapperPrepared.spec, nodeId);
+    if (!catalogNode) {
+      throw new Error(`Node ${nodeId} is not inside the cached wrapper subtree`);
+    }
   }
 
   const selectedRef = { ...ref, nodeIds: [nodeId] };
   const selectedDepth = options.depth ?? 6;
   const selectedOutput = options.output
-    ? join(wrapperPrepared.directory, "focused", safeId(nodeId))
+    ? join(wrapperPrepared?.directory ?? options.output, "focused", safeId(nodeId))
     : undefined;
   const prepared = await prepareData(api, selectedRef, {
     ...options,
@@ -583,7 +587,7 @@ export async function focus(api, ref, nodeId, options = {}) {
       api,
       {
         ref: { fileKey: ref.fileKey, nodeIds: [nodeId] },
-        directory: join(wrapperPrepared.directory, "renders"),
+        directory: join(wrapperPrepared?.directory ?? prepared.directory, "renders"),
       },
       { ...options, scale: options.scale ?? 1 },
     );
@@ -613,8 +617,8 @@ export async function focus(api, ref, nodeId, options = {}) {
     },
     cache: {
       directory: prepared.directory,
-      wrapperDirectory: wrapperPrepared.directory,
-      wrapperDataHit: wrapperPrepared.dataCacheHit,
+      wrapperDirectory: wrapperPrepared?.directory,
+      wrapperDataHit: wrapperPrepared?.dataCacheHit,
       dataHit: prepared.dataCacheHit,
       screenshotHit: screenshot.cacheHit,
     },

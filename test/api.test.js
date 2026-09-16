@@ -41,6 +41,29 @@ test("keeps credentials in headers and captures rate-limit metadata", async () =
   assert.equal(result.rate.planTier, "starter");
 });
 
+test("uses current folder discovery endpoints without leaking scope data", async () => {
+  const requests = [];
+  const api = new FigmaApi({
+    token: "secret-token",
+    fetchImpl: async (url) => {
+      requests.push(String(url));
+      return new Response(JSON.stringify({ name: "Product", folders: [], files: [] }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    },
+  });
+  await api.getTeamFolders("123");
+  await api.getFolderFolders("456");
+  await api.getFolderFiles("456");
+  assert.deepEqual(requests.map((value) => new URL(value).pathname), [
+    "/v2/teams/123/folders",
+    "/v2/folders/456/folders",
+    "/v2/folders/456/files",
+  ]);
+  assert.ok(requests.every((value) => !value.includes("secret-token")));
+});
+
 test("returns actionable 404 errors without exposing the token", async () => {
   const api = new FigmaApi({
     token: "never-print-me",

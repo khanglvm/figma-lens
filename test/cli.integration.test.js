@@ -267,3 +267,102 @@ test("CLI scouts shallowly and fetches only the chosen screen during focus", asy
   assert.equal(exportManifest.apiCalls.length, 1);
   assert.equal(requests.filter((request) => request.startsWith("/v1/")).length, 13);
 });
+
+test("CLI registers a team and finds a design across its files", async (context) => {
+  const requests = [];
+  const server = createServer((request, response) => {
+    requests.push(request.url);
+    response.setHeader("content-type", "application/json");
+    if (request.url === "/v2/teams/123/folders") {
+      response.end(JSON.stringify({
+        name: "Product Design",
+        folders: [{ id: "folder-1", name: "Recruitment", parent_folder_id: null }],
+      }));
+      return;
+    }
+    if (request.url === "/v2/folders/folder-1/folders") {
+      response.end(JSON.stringify({ name: "Recruitment", folders: [] }));
+      return;
+    }
+    if (request.url === "/v2/folders/folder-1/files") {
+      response.end(JSON.stringify({
+        name: "Recruitment",
+        files: [{ key: "CandidateFile", name: "Candidate journeys", last_modified: "2026-09-16T00:00:00Z" }],
+      }));
+      return;
+    }
+    if (request.url === "/v1/files/CandidateFile?depth=3") {
+      response.end(JSON.stringify({
+        name: "Candidate journeys",
+        lastModified: "2026-09-16T00:00:00Z",
+        version: "1",
+        document: {
+          id: "0:0",
+          name: "Document",
+          type: "DOCUMENT",
+          children: [{
+            id: "1:0",
+            name: "Recruitment",
+            type: "CANVAS",
+            children: [{
+              id: "1:1",
+              name: "Candidate filters - No results",
+              type: "FRAME",
+              absoluteBoundingBox: { x: 0, y: 0, width: 1440, height: 900 },
+              children: [{
+                id: "1:2",
+                name: "Empty message",
+                type: "TEXT",
+                characters: "No matching candidates",
+                absoluteBoundingBox: { x: 40, y: 40, width: 400, height: 40 },
+              }],
+            }],
+          }],
+        },
+        components: {},
+        styles: {},
+      }));
+      return;
+    }
+    response.statusCode = 404;
+    response.end(JSON.stringify({ err: "Not found" }));
+  });
+  await new Promise((resolveListen) => server.listen(0, "127.0.0.1", resolveListen));
+  context.after(() => server.close());
+
+  const config = await mkdtemp(join(tmpdir(), "figma-lens-cli-discovery-config-"));
+  const output = await mkdtemp(join(tmpdir(), "figma-lens-cli-discovery-index-"));
+  const environment = {
+    ...process.env,
+    FIGMA_TOKEN: "test-token",
+    FIGMA_LENS_CONFIG_DIR: config,
+    FIGMA_API_BASE_URL: `http://127.0.0.1:${server.address().port}`,
+  };
+  const added = await execFileAsync(process.execPath, [
+    resolve("bin/figma-lens.js"),
+    "teams",
+    "add",
+    "https://www.figma.com/files/1/team/123/Product",
+  ], { cwd: resolve("."), env: environment });
+  assert.equal(JSON.parse(added.stdout).team.name, "Product Design");
+
+  const found = await execFileAsync(process.execPath, [
+    resolve("bin/figma-lens.js"),
+    "find",
+    "recruiter filters candidates and sees no results",
+    "--scope",
+    "Product Design / Recruitment",
+    "--max-files",
+    "1",
+    "--render",
+    "0",
+    "--output",
+    output,
+  ], { cwd: resolve("."), env: environment });
+  const manifest = JSON.parse(found.stdout);
+  assert.equal(manifest.ok, true);
+  assert.equal(manifest.matches[0].node.id, "1:1");
+  assert.match(manifest.next.focus[0], /node-id=1-1/);
+  assert.ok(Buffer.byteLength(found.stdout) < 6_000);
+  assert.ok(requests.includes("/v1/files/CandidateFile?depth=3"));
+});
