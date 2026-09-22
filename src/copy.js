@@ -27,6 +27,36 @@ function likelyCodeString(value) {
   return false;
 }
 
+const TAILWIND_BARE_UTILITIES = new Set([
+  "absolute", "block", "border", "contents", "fixed", "flex", "grid", "hidden",
+  "inline", "relative", "sticky", "table",
+]);
+
+function likelyTailwindClassList(value) {
+  const tokens = value.split(/\s+/).filter(Boolean);
+  if (tokens.length < 2) return false;
+  return tokens.every((token) => {
+    if (!/^[!a-z0-9_:[\]./%#()-]+$/.test(token)) return false;
+    return TAILWIND_BARE_UTILITIES.has(token) || /[!:[\]/-]/.test(token);
+  });
+}
+
+function likelyClassLiteral(context, value) {
+  if (!likelyTailwindClassList(value)) return false;
+  return /(?:className\s*=\s*\{\s*|\b(?:classNames|clsx|cn)\s*\()[\s\S]*$/m.test(context);
+}
+
+function likelyDirective(source, match) {
+  if (!/^use (?:client|server|strict)$/.test(normalize(match[1]))) return false;
+  const before = source.slice(0, match.index).trim();
+  const after = source.slice(match.index + match[0].length);
+  return !before && /^\s*;?(?:\r?\n|$)/.test(after);
+}
+
+function likelyDiagnosticLiteral(context) {
+  return /\b(?:createLogger|(?:logger|console)\.(?:debug|error|info|log|warn))\s*\(\s*$/m.test(context);
+}
+
 function addCandidate(candidates, sourcePath, source, value, index, kind) {
   const normalized = normalize(value);
   if (likelyCodeString(normalized)) return;
@@ -45,6 +75,7 @@ function extractVisibleCopy(sourcePath, source) {
 
   const openingTag = /<(?:[A-Za-z][\w.:]*|>)(?:[^<>{"']|"[^"]*"|'[^']*'|\{[^{}]*\})*>([^<>{}\n]+)/g;
   for (const match of source.matchAll(openingTag)) {
+    if (match.index > 0 && /[\p{L}\p{N}_$.)\]]/u.test(source[match.index - 1])) continue;
     addCandidate(candidates, sourcePath, source, match[1], match.index + match[0].indexOf(match[1]), "jsx-text");
   }
   for (const match of source.matchAll(/\}([^<>{}\n]+)(?=<)/g)) {
@@ -66,7 +97,8 @@ function extractVisibleCopy(sourcePath, source) {
       if (!value || value.includes("${") || likelyCodeString(value)) continue;
       const context = source.slice(Math.max(0, match.index - 160), match.index);
       if (/\b(?:from|import|require)\s*(?:\(|$)[^\n]*$/m.test(context)) continue;
-      if (/(?:className|id|key|role|type|name|href|src|htmlFor|viewBox|d|fill|stroke|xmlns|aria-[\w-]+|data-[\w-]+)\s*=\s*$/m.test(context)) continue;
+      if (/(?:className|id|key|role|type|name|href|src|target|rel|htmlFor|viewBox|d|fill|stroke|xmlns|aria-[\w-]+|data-[\w-]+)\s*=\s*$/m.test(context)) continue;
+      if (likelyDirective(source, match) || likelyDiagnosticLiteral(context) || likelyClassLiteral(context, value)) continue;
       const words = value.split(/\s+/).filter(Boolean);
       const looksUserFacing = words.length > 1
         || /^[\p{Lu}\p{Lt}][\p{L}\p{M}\p{N}….,!?+&/()'’-]*$/u.test(value)
