@@ -2,6 +2,11 @@
 
 This file records user-visible changes to Figma Lens.
 
+## 0.3.2 - 2026-09-22
+
+- Fixed `copy-check` so TypeScript generics, client directives, logger metadata, non-visible link attributes, and Tailwind class lists are not reported as UI copy.
+- Kept direct JSX text and ordinary product strings under provenance checking.
+
 ## 0.3.1 - 2026-09-16
 
 - Added file-metadata guidance when team setup starts from a design-node URL.

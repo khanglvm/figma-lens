@@ -74,3 +74,36 @@ test("copy gate merges exact visible copy from bounded detail evidence", async (
   assert.equal(result.ok, true);
   assert.equal(result.evidence.length, 2);
 });
+
+test("copy gate ignores source syntax and styling while preserving visible JSX copy", async () => {
+  const { directory, evidence } = await fixture();
+  const source = join(directory, "TranslatedModal.tsx");
+  await writeFile(source, `
+    'use client'
+    const logger = createLogger('TranslatedModal')
+    type Status = 'loading' | 'ready'
+    const supportedTerms = ['well-known long-term']
+    const [record, setRecord] = useState<Record | null>(null)
+    const [status, setStatus] = useState<Status>('loading')
+    logger.error('[TranslatedModal] loading failed', record)
+    export function Modal() {
+      return (
+        <div className={cn(
+          'space-y-3 rounded-lg border p-4 text-sm',
+          status === 'ready' ? 'border-gray-200 bg-gray-50' : 'border-amber-300 bg-amber-50'
+        )}>
+          <a rel="noopener noreferrer" target="_blank">{record} email</a>
+          <p>Invented visible copy</p>
+        </div>
+      )
+    }
+  `);
+
+  const result = await checkImplementationCopy(evidence, [source]);
+  assert.equal(result.ok, false);
+  assert.deepEqual(result.violations.map((item) => item.value), [
+    "Invented visible copy",
+    "email",
+    "well-known long-term",
+  ]);
+});
