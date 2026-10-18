@@ -40,3 +40,13 @@ evidence, use one source-size `detail` call for important child groups, and run
 `copy-check` on implementation JSX/TSX before handoff. Never allowlist guessed
 copy or sample data; `copy-check` does not replace the required screenshot
 comparison.
+
+## Source contributions
+
+Use Node.js 20 or newer. Install locked dependencies with
+`npm ci --ignore-scripts --no-audit --no-fund`, then run `npm run check`.
+This checks CLI syntax and runs the existing unit, local HTTP CLI, and in-memory
+MCP fixture tests without a live Figma account or credentials. Dependency
+installation requires registry access; the checks themselves use local fixtures.
+The source PR workflow runs these commands on Node.js 22. Source validation does
+not require a package version change or any publishing command.
