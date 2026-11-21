@@ -1,0 +1,16 @@
+{
+  "pages": [
+    "index",
+    "install",
+    "authentication",
+    "quickstart",
+    "---Guides---",
+    "find-designs",
+    "design-to-code",
+    "---Reference---",
+    "cli",
+    "mcp",
+    "---For agents---",
+    "agents"
+  ]
+}

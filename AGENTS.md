@@ -50,3 +50,14 @@ MCP fixture tests without a live Figma account or credentials. Dependency
 installation requires registry access; the checks themselves use local fixtures.
 The source PR workflow runs these commands on Node.js 22. Source validation does
 not require a package version change or any publishing command.
+
+## Docs
+
+`docs/` is the source of truth for this tool's documentation. docs.khangle.dev publishes the pages `docs/meta.json` lists, and llms.txt is built from the same pages for coding agents. The contract is in https://github.com/khanglvm/docs/blob/main/docs/CONTRACT.md. `docs/` and `skills/figma-lens/` also ship in the npm package. `docs/research.md` is internal and stays out of `docs/meta.json`.
+
+- When a change adds, removes or changes a command, flag, option, config key, output format, MCP tool or default, update the docs page that covers it in the same commit: `docs/cli.md` for commands and flags, `docs/mcp.md` for MCP tools, `docs/authentication.md` for tokens and scopes. Add a page and list it in `docs/meta.json` when none covers it.
+- Keep `docs/agents.md` exact: commands, flags, output shapes and limits, written for a coding agent. Keep the facts in `skills/figma-lens/` consistent with the pages.
+- README sections between `<!-- docs:begin PAGE -->` and `<!-- docs:end -->` are generated. Edit the page in `docs/`, then run `node scripts/docs-readme.mjs`.
+- Run `node scripts/docs-readme.mjs --check` before committing. CI runs the same check.
+- Do not move or rename a published page without updating `docs/meta.json` and links to it.
+- A push to `main` that changes `package.json` publishes to npm. A docs-only change does not touch it.

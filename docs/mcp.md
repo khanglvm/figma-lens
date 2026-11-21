@@ -1,7 +1,40 @@
-# MCP mode
+# MCP server
 
-Figma Lens exposes the same compact, visual-first workflow as native MCP tools.
-The default transport is local stdio:
+figma-lens can run as an MCP server, so an MCP-capable agent calls the same find, scout, focus and detail steps as native tools. This page covers client setup, the transports and the eight tools with their parameters.
+
+## Connect a client
+
+The server starts with `figma-lens mcp` and talks over stdio by default. It reads the token saved by `figma-lens auth login`, or a `FIGMA_TOKEN` in the host's configuration, so sign in first. See [Authentication](authentication.md).
+
+### Claude Code
+
+```sh
+claude mcp add figma-lens -- npx -y figma-lens@latest mcp
+```
+
+To pass the token through the host instead of using the saved login:
+
+```sh
+claude mcp add --env FIGMA_TOKEN="$FIGMA_TOKEN" figma-lens -- npx -y figma-lens@latest mcp
+```
+
+### Codex
+
+```sh
+codex mcp add figma-lens -- npx -y figma-lens@latest mcp
+```
+
+Or add it to `~/.codex/config.toml`:
+
+```toml
+[mcp_servers.figma-lens]
+command = "npx"
+args = ["-y", "figma-lens@latest", "mcp"]
+```
+
+### Other clients
+
+Any client that accepts a stdio server takes the same command:
 
 ```json
 {
@@ -14,65 +47,70 @@ The default transport is local stdio:
 }
 ```
 
-The process uses the credential saved by `figma-lens auth login`, or a
-`FIGMA_TOKEN` supplied in the MCP host configuration. A protected
-`--token-file` is also supported. Keep secrets out of the JSON file when the
-host supports environment-variable references; `--token-stdin` is deliberately
-unavailable because stdio is the MCP protocol channel.
+If figma-lens is installed globally, use `"command": "figma-lens"` and `"args": ["mcp"]`. Keep the token out of this file when the host can read it from an environment variable. `--token-file <path>` also works, but `--token-stdin` is refused because stdin carries the MCP protocol.
 
-For cross-file discovery, register searchable teams once from the CLI before
-starting the MCP server:
+## Search across teams
 
-```bash
+For `figma_lens_find`, register the teams you want searched once from the CLI, before the server starts:
+
+```sh
 figma-lens teams add "https://www.figma.com/files/.../team/TEAM_ID/..."
 figma-lens context
 ```
 
-The token needs `folders:read` as well as the normal file and user read scopes.
-Add `file_metadata:read` for design-URL setup guidance. Figma does not provide
-an API that lists team IDs for the current user.
+The token needs `folders:read` as well as the normal file and user scopes. Add `file_metadata:read` for guidance that starts from a design URL. See [Find designs without a link](find-designs.md).
 
-For one self-hosted endpoint shared by clients:
+## One shared HTTP endpoint
 
-```bash
+To serve several clients from one process:
+
+```sh
 figma-lens mcp --http --host 127.0.0.1 --port 3333
 ```
 
-This serves Streamable HTTP at `http://127.0.0.1:3333/mcp`. It uses the MCP
-2026-07-28 per-request stateless model and accepts legacy 2025 clients through
-the SDK's stateless compatibility path.
+This serves Streamable HTTP at `http://127.0.0.1:3333/mcp` and a health check at `/health`. It uses the stateless per-request model of the 2026-07-28 MCP version and accepts older 2025 clients through the SDK's stateless compatibility path.
 
-Loopback HTTP applies Host and Origin validation against DNS rebinding. A
-non-loopback bind is refused unless `FIGMA_LENS_MCP_TOKEN` is set. Clients must
-then send that separate secret as `Authorization: Bearer ...`; it must never be
-the Figma PAT. Browser origins are rejected unless listed in the comma-separated
-`FIGMA_LENS_ALLOWED_ORIGINS` variable. Internet-facing deployments should put
-the endpoint behind TLS and a standards-compliant OAuth 2.1 MCP authorization
-layer; the built-in bearer gate is intended for controlled self-hosting.
+On a loopback address, the server checks the Host and Origin headers to block DNS rebinding. It refuses to bind to another address unless `FIGMA_LENS_MCP_TOKEN` is set. Clients must then send it as `Authorization: Bearer ...`. This is a separate secret and must never be the Figma token. Browser origins are rejected unless the comma-separated `FIGMA_LENS_ALLOWED_ORIGINS` lists them. For an internet-facing deployment, put the endpoint behind TLS and an OAuth 2.1 MCP authorization layer. The built-in bearer check is meant for controlled self-hosting.
 
-Tools:
+## Tools
 
-- `figma_lens_context`: current account and registered team search scopes
-- `figma_lens_find`: fuzzy design discovery across teams, folders, and files
-- `figma_lens_scout`: bounded visual overview and state/target catalog
-- `figma_lens_focus`: one exact node or 2-6 representative states
-- `figma_lens_detail`: source-size visual and geometry for important children
-- `figma_lens_inspect`: one known exact frame/component
-- `figma_lens_search`: cache-first name/visible-text search
-- `figma_lens_render`: exact PNG/JPG/PDF render or SVG export
+Every tool is read-only. Each returns a compact JSON manifest followed by at most six image blocks. The JSON navigates the design and the images are the main visual evidence. No tool returns the raw Figma document tree. A failed call returns `{"ok": false, "error": "..."}` with the MCP error flag set.
 
-Each tool returns a compact JSON manifest plus at most six image content blocks.
-The JSON navigates the design; the images provide the primary visual evidence.
-No tool returns the raw Figma document tree by default.
+| Tool | Use it to | CLI equivalent |
+| --- | --- | --- |
+| `figma_lens_context` | Show the account and registered teams, or build a team-setup request from a design URL. | `context` |
+| `figma_lens_find` | Search teams, folders and files for a described design. | `find` |
+| `figma_lens_scout` | Get the overview and state catalog of a board, flow or multi-state component. Call it first. | `scout` |
+| `figma_lens_focus` | Focus one node or 2 to 6 representative states. | `focus`, `focus-set` |
+| `figma_lens_detail` | Measure important child groups at source size. | `detail` |
+| `figma_lens_inspect` | Inspect one known exact frame or component. | `inspect` |
+| `figma_lens_search` | Search names and visible text inside one file URL. | `search` |
+| `figma_lens_render` | Render node IDs as PNG, JPG or PDF, or export them as SVG. | `screenshot`, `export` |
 
-`figma_lens_find` returns no more than the requested match limit and attaches at
-most two candidate screenshots. It keeps the full ranking and request details in
-a local artifact. Agents should call `figma_lens_context` only when the user's
-team or workspace name is unclear; otherwise they can pass the user's scope
-directly to `figma_lens_find`.
+### Parameters
 
-When no team is registered, pass an available design-node URL as
-`figma_lens_context.source_url`. The tool returns the file and folder names plus
-a concise question asking the user to paste the owning team-page URL. Once the
-user responds, run `figma-lens teams add "<PASTED_TEAM_URL>"` and repeat the
-search.
+All `url` values are Figma `/design` or `/file` URLs, preferably with a `node-id`. `refresh` and `offline` are booleans and default to false.
+
+| Tool | Parameters (defaults in parentheses) |
+| --- | --- |
+| `figma_lens_context` | `source_url` (optional design URL), `refresh` |
+| `figma_lens_find` | `query` (1 to 500 characters), `scope` (up to 200 characters), `team_ids` (up to 8), `max_files` (1 to 30, default 8), `limit` (1 to 8, default 5), `render` (0 to 2, default 2), `depth` (2 to 6, default 3), `offline`, `refresh` |
+| `figma_lens_scout` | `url`, `intent` (up to 500 characters; leave it out on the first call), `render` (0 to 2; default 2 with an intent, else 0), `refresh` |
+| `figma_lens_focus` | `url`, `node_ids` (1 to 6 IDs such as `12:34`), `depth` (1 to 12, default 6), `scale` (0.25 to 4, default 1), `refresh` |
+| `figma_lens_detail` | `url` (a focused single-node URL), `intent` (comma-separated child groups, required), `render` (1 to 4, default 4), `scale` (1 to 4, default 2), `depth` (1 to 12, default 6), `refresh` |
+| `figma_lens_inspect` | `url`, `depth` (1 to 12, default 6), `scale` (0.25 to 4, default 2), `refresh` |
+| `figma_lens_search` | `url`, `query` (1 to 500 characters), `depth` (1 to 12, default 6), `limit` (1 to 30, default 20), `offline` |
+| `figma_lens_render` | `url`, `node_ids` (1 to 20), `format` (`png`, `jpg`, `svg` or `pdf`; default `png`), `scale` (0.01 to 4, default 2), `refresh` |
+
+`figma_lens_focus` exports distinctive assets automatically. `figma_lens_render` skips nodes Figma cannot export and returns no image blocks for `pdf`.
+
+### How an agent uses them
+
+1. `figma_lens_scout` with only `url` for any board, flow or multi-state link. View `overview.screenshot` and read `overview.states`.
+2. `figma_lens_focus` with `overview.collection.representativeStates[].implementationId` as `node_ids`, for one call.
+3. `figma_lens_detail` once, with the focused node's URL and two to four child groups in `intent`.
+4. `figma_lens_render` for icons and illustrations that were not exported automatically.
+
+`figma_lens_find` returns at most the requested number of matches and attaches at most two screenshots. It keeps the full ranking in a local file. An agent should call `figma_lens_context` only when the team or workspace is unclear, and otherwise pass the user's scope straight to `figma_lens_find`.
+
+When no team is registered, an agent passes any design URL it has as `figma_lens_context.source_url`. The tool returns the file and folder names and a question asking the user for the owning team-page URL. After the user answers, run `figma-lens teams add "<PASTED_TEAM_URL>"` and search again. For the full agent rules, see [Use with coding agents](agents.md).

@@ -1,5 +1,7 @@
 # Setup and authentication
 
+For the full documentation in one file, read https://docs.khangle.dev/figma-lens/llms-full.txt.
+
 Figma Lens is read-only and headless. It calls Figma's REST API, so Figma
 Desktop is not installed or opened. The file must be saved/imported on Figma's
 servers and the token owner must already be able to open it. A personal access

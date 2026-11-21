@@ -5,6 +5,8 @@ description: Discover and inspect Figma designs from URLs, natural-language desc
 
 # Figma Lens workflow
 
+For the full documentation in one file, read https://docs.khangle.dev/figma-lens/llms-full.txt.
+
 Use Figma Lens for every Figma URL. Choose the transport without probing or
 duplicating calls:
 
