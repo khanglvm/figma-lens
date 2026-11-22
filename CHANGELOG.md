@@ -2,6 +2,10 @@
 
 This file records user-visible changes to Figma Lens.
 
+## 0.3.3 - 2026-11-22
+
+- Shipped the current README, docs and agent skill, so the npm page matches GitHub and docs.khangle.dev, which now publishes the guides.
+
 ## 0.3.2 - 2026-09-22
 
 - Fixed `copy-check` so TypeScript generics, client directives, logger metadata, non-visible link attributes, and Tailwind class lists are not reported as UI copy.

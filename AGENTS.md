@@ -60,4 +60,5 @@ not require a package version change or any publishing command.
 - README sections between `<!-- docs:begin PAGE -->` and `<!-- docs:end -->` are generated. Edit the page in `docs/`, then run `node scripts/docs-readme.mjs`.
 - Run `node scripts/docs-readme.mjs --check` before committing. CI runs the same check.
 - Do not move or rename a published page without updating `docs/meta.json` and links to it.
-- A push to `main` that changes `package.json` publishes to npm. A docs-only change does not touch it.
+- A change is finished when GitHub, docs.khangle.dev and the npm page all show it (the `doc-sync` workflow). npm shows the README of the latest published version only, so a change to README.md ships with a patch release: bump `version` in `package.json`, add the CHANGELOG entry and push to `main`; the publish workflow ships it. Then run `node scripts/docs-surfaces.mjs` until it exits 0.
+- A push to `main` that changes the `version` in `package.json` publishes to npm. A docs change that touches README.md ships with a patch bump (see the line above).
